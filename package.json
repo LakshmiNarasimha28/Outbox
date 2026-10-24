@@ -1,0 +1,34 @@
+{
+  "name": "outbox-email-job-scheduler",
+  "version": "1.0.0",
+  "description": "Outbox Labs Hiring Assignment - Full-Stack Distributed Email Job Scheduler",
+  "private": true,
+  "scripts": {
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:backend": "npm --prefix backend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:all": "npm run build:backend && npm run build:frontend",
+    "type-check": "npm --prefix backend run type-check && npm --prefix frontend run build",
+    "verify:connections": "npm --prefix backend run verify:connections",
+    "test": "npm --prefix backend test",
+    "test:backend": "npm --prefix backend test",
+    "db:migrate": "npm --prefix backend run db:migrate",
+    "ethereal:create": "npm --prefix backend run ethereal:create",
+    "es:sync": "npm --prefix backend run es:sync"
+  },
+  "keywords": [
+    "email-scheduler",
+    "bullmq",
+    "ioredis",
+    "mysql2",
+    "express",
+    "typescript",
+    "react",
+    "vite",
+    "tailwind"
+  ],
+  "author": "Outbox Labs Candidate",
+  "license": "UNLICENSED"
+}

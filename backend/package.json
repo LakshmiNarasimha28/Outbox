@@ -1,0 +1,41 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "Express.js + TypeScript Backend for Outbox Job Scheduler",
+  "private": true,
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "type-check": "tsc --noEmit",
+    "verify:connections": "tsx src/scripts/verifyConnections.ts",
+    "db:migrate": "tsx src/database/initSchema.ts",
+    "ethereal:create": "tsx src/scripts/createEtherealAccount.ts",
+    "es:sync": "tsx src/scripts/syncElasticsearch.ts",
+    "test": "tsx --test --test-concurrency=1 src/__tests__/**/*.test.ts",
+    "clean": "rimraf dist"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^9.5.1",
+    "bullmq": "^5.41.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "ioredis": "^5.4.2",
+    "mysql2": "^3.12.0",
+    "nodemailer": "^10.2.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.13.4",
+    "@types/nodemailer": "^8.0.2",
+    "@types/supertest": "^7.2.1",
+    "rimraf": "^6.0.1",
+    "supertest": "^7.3.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
