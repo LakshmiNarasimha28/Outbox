@@ -35,7 +35,25 @@ const envSchema = z.object({
     .refine((val) => !isNaN(val) && val > 0 && val < 65536, {
       message: 'PORT must be a valid port number (1-65535)',
     }),
-  CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  FRONTEND_URL: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim().replace(/\/$/, '') : undefined)),
+  APP_URL: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim().replace(/\/$/, '') : undefined)),
+  CORS_ORIGIN: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (val && val.trim().length > 0) return val.trim().replace(/\/$/, '');
+      const candidate = process.env.FRONTEND_URL || process.env.APP_URL;
+      if (candidate && candidate.trim().length > 0) return candidate.trim().replace(/\/$/, '');
+      return process.env.NODE_ENV === 'production'
+        ? 'https://outbox-black.vercel.app'
+        : 'http://localhost:5173';
+    }),
   TRUST_PROXY: z
     .string()
     .optional()
@@ -224,7 +242,22 @@ const envSchema = z.object({
     .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
   GOOGLE_CALLBACK_URL: z
     .string()
-    .default('http://localhost:5000/api/auth/google/callback'),
+    .optional()
+    .transform((val) => {
+      if (val && val.trim().length > 0) {
+        const trimmed = val.trim();
+        if (process.env.NODE_ENV === 'production' && (trimmed.includes('localhost') || trimmed.includes('127.0.0.1'))) {
+          const frontend = process.env.FRONTEND_URL?.trim() || process.env.APP_URL?.trim() || 'https://outbox-black.vercel.app';
+          return `${frontend.replace(/\/$/, '')}/api/auth/google/callback`;
+        }
+        return trimmed;
+      }
+      if (process.env.NODE_ENV === 'production') {
+        const frontend = process.env.FRONTEND_URL?.trim() || process.env.APP_URL?.trim() || 'https://outbox-black.vercel.app';
+        return `${frontend.replace(/\/$/, '')}/api/auth/google/callback`;
+      }
+      return 'http://localhost:5000/api/auth/google/callback';
+    }),
   SESSION_SECRET: z
     .string()
     .default('outbox-super-secure-session-secret-change-in-prod'),
@@ -244,7 +277,22 @@ const envSchema = z.object({
     .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
   SLACK_CALLBACK_URL: z
     .string()
-    .default('http://localhost:5000/api/auth/slack/callback'),
+    .optional()
+    .transform((val) => {
+      if (val && val.trim().length > 0) {
+        const trimmed = val.trim();
+        if (process.env.NODE_ENV === 'production' && (trimmed.includes('localhost') || trimmed.includes('127.0.0.1'))) {
+          const frontend = process.env.FRONTEND_URL?.trim() || process.env.APP_URL?.trim() || 'https://outbox-black.vercel.app';
+          return `${frontend.replace(/\/$/, '')}/api/auth/slack/callback`;
+        }
+        return trimmed;
+      }
+      if (process.env.NODE_ENV === 'production') {
+        const frontend = process.env.FRONTEND_URL?.trim() || process.env.APP_URL?.trim() || 'https://outbox-black.vercel.app';
+        return `${frontend.replace(/\/$/, '')}/api/auth/slack/callback`;
+      }
+      return 'http://localhost:5000/api/auth/slack/callback';
+    }),
   SLACK_NOTIFICATION_COOLDOWN_SECONDS: z
     .string()
     .default('900') // 15 minutes cooldown to avoid rate-limit spam
@@ -273,3 +321,79 @@ function parseEnv(): Env {
 }
 
 export const env = parseEnv();
+
+/**
+ * Resolves the user-facing frontend origin URL.
+ * Prioritizes request headers from reverse proxy (Vercel proxy / x-forwarded-host),
+ * then configured FRONTEND_URL / APP_URL / CORS_ORIGIN environment variables,
+ * falling back to https://outbox-black.vercel.app in production or http://localhost:5173 in development.
+ */
+export function resolveFrontendUrl(req?: { get: (header: string) => string | undefined }): string {
+  if (req) {
+    const forwardedHost = req.get('x-forwarded-host');
+    if (forwardedHost) {
+      const cleanHost = forwardedHost.split(',')[0].trim();
+      const proto = req.get('x-forwarded-proto') || 'https';
+      // In production, do not treat backend onrender.com or accidental localhost headers as frontend
+      if (
+        !cleanHost.includes('onrender.com') &&
+        (env.NODE_ENV !== 'production' || (!cleanHost.includes('localhost') && !cleanHost.includes('127.0.0.1')))
+      ) {
+        return `${proto}://${cleanHost}`.replace(/\/$/, '');
+      }
+    }
+  }
+
+  if (env.FRONTEND_URL) return env.FRONTEND_URL;
+  if (env.APP_URL) return env.APP_URL;
+
+  if (env.NODE_ENV === 'production') {
+    if (
+      env.CORS_ORIGIN &&
+      !env.CORS_ORIGIN.includes('localhost') &&
+      !env.CORS_ORIGIN.includes('127.0.0.1') &&
+      !env.CORS_ORIGIN.includes('onrender.com')
+    ) {
+      return env.CORS_ORIGIN;
+    }
+    return 'https://outbox-black.vercel.app';
+  }
+
+  return env.CORS_ORIGIN || 'http://localhost:5173';
+}
+
+/**
+ * Resolves the Google OAuth 2.0 callback URL sent to Google and exchanged for tokens.
+ * In production, guarantees the authorized Vercel callback route is used
+ * (https://outbox-black.vercel.app/api/auth/google/callback).
+ * In development, uses the local backend callback route (http://localhost:5000/api/auth/google/callback).
+ */
+export function resolveGoogleCallbackUrl(req?: { get: (header: string) => string | undefined }): string {
+  // If request arrived from a deployed origin (e.g. Vercel proxy with x-forwarded-host)
+  if (req) {
+    const forwardedHost = req.get('x-forwarded-host');
+    if (forwardedHost) {
+      const cleanHost = forwardedHost.split(',')[0].trim();
+      if (!cleanHost.includes('onrender.com') && !cleanHost.includes('localhost') && !cleanHost.includes('127.0.0.1')) {
+        const proto = req.get('x-forwarded-proto') || 'https';
+        return `${proto}://${cleanHost}/api/auth/google/callback`;
+      }
+    }
+  }
+
+  const configured = process.env.GOOGLE_CALLBACK_URL?.trim();
+  if (configured && configured.length > 0) {
+    if (env.NODE_ENV === 'production' && (configured.includes('localhost') || configured.includes('127.0.0.1'))) {
+      const base = resolveFrontendUrl(req);
+      return `${base}/api/auth/google/callback`;
+    }
+    return configured;
+  }
+
+  if (env.NODE_ENV === 'production') {
+    const base = resolveFrontendUrl(req);
+    return `${base}/api/auth/google/callback`;
+  }
+
+  return `http://localhost:${env.PORT || 5000}/api/auth/google/callback`;
+}

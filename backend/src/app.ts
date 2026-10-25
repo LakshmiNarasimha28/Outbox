@@ -21,9 +21,33 @@ export function createApp(): Express {
   }
 
   // CORS configuration
+  const allowedOrigins = Array.from(
+    new Set(
+      [
+        'https://outbox-black.vercel.app',
+        env.CORS_ORIGIN,
+        env.FRONTEND_URL,
+        env.APP_URL,
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+      ].filter((u): u is string => Boolean(u))
+    )
+  );
+
   app.use(
     corsMiddleware({
-      origin: [env.CORS_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: (requestOrigin, callback) => {
+        // Allow requests without Origin (like curl, health checks, server-to-server)
+        if (!requestOrigin) return callback(null, true);
+        if (
+          allowedOrigins.includes(requestOrigin) ||
+          requestOrigin === 'https://outbox-black.vercel.app' ||
+          requestOrigin.endsWith('.vercel.app')
+        ) {
+          return callback(null, true);
+        }
+        return callback(null, false);
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     })

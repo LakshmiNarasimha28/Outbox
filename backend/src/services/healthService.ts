@@ -59,7 +59,7 @@ export class HealthService {
         elasticsearch: esStatus,
         googleAuth: {
           configured: AuthService.isConfigured(),
-          callbackUrl: env.GOOGLE_CALLBACK_URL,
+          callbackUrl: AuthService.getEffectiveCallbackUrl(),
         },
         slack: {
           configured: Boolean(env.SLACK_CLIENT_ID && env.SLACK_CLIENT_SECRET),

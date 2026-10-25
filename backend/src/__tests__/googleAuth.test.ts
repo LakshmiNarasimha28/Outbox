@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createApp } from '../app';
 import { AuthService, AuthUser } from '../services/authService';
+import { resolveFrontendUrl, resolveGoogleCallbackUrl, env } from '../config/env';
 import { closeDatabasePool } from '../database/mysql';
 import { closeRedisConnection } from '../queue/redis';
 import { closeEmailQueue } from '../queue/emailQueue';
@@ -12,8 +13,11 @@ import { closeEmailQueue } from '../queue/emailQueue';
  */
 function createMockOAuthClient() {
   return {
-    generateAuthUrl: ({ state }: { state: string }) => {
-      return `https://accounts.google.com/o/oauth2/v2/auth?client_id=mock-client-id&state=${state}&scope=openid+profile+email`;
+    generateAuthUrl: (options: { state: string; redirect_uri?: string }) => {
+      const redirectUriParam = options.redirect_uri
+        ? `&redirect_uri=${encodeURIComponent(options.redirect_uri)}`
+        : '';
+      return `https://accounts.google.com/o/oauth2/v2/auth?client_id=mock-client-id&state=${options.state}&scope=openid+profile+email${redirectUriParam}`;
     },
     getToken: async (code: string) => {
       if (code === 'valid-auth-code') {
@@ -223,5 +227,124 @@ describe('Google OAuth 2.0 Authentication & Session Lifecycle Tests', () => {
       .set('Cookie', [`${AuthService.SESSION_COOKIE_NAME}=${tokenB}`]);
 
     assert.equal(getResB.status, 404, 'User B must not be able to view User A private email');
+  });
+
+  describe('Google OAuth Production Redirects & URL Resolution', () => {
+    it('should use Vercel production origin for post-login redirect when proxied from Vercel', async () => {
+      const mockClient = createMockOAuthClient();
+      AuthService.setOAuthClient(mockClient as any);
+
+      const testState = 'production-csrf-state-xyz';
+
+      const callbackRes = await request(app)
+        .get('/api/auth/google/callback')
+        .query({ code: 'valid-auth-code', state: testState })
+        .set('Cookie', [`${AuthService.STATE_COOKIE_NAME}=${testState}`])
+        .set('X-Forwarded-Host', 'outbox-black.vercel.app')
+        .set('X-Forwarded-Proto', 'https');
+
+      assert.equal(callbackRes.status, 302);
+      assert.equal(callbackRes.headers.location, 'https://outbox-black.vercel.app/?auth_success=true');
+    });
+
+    it('should pass Vercel production callback URI to Google when initiated via Vercel proxy', async () => {
+      const mockClient = createMockOAuthClient();
+      AuthService.setOAuthClient(mockClient as any);
+
+      const res = await request(app)
+        .get('/api/auth/google')
+        .set('X-Forwarded-Host', 'outbox-black.vercel.app')
+        .set('X-Forwarded-Proto', 'https');
+
+      assert.equal(res.status, 302);
+      assert.ok(
+        res.headers.location.includes(
+          'redirect_uri=' + encodeURIComponent('https://outbox-black.vercel.app/api/auth/google/callback')
+        )
+      );
+    });
+
+    it('should preserve localhost callback and redirect in development mode without proxy headers', async () => {
+      const mockClient = createMockOAuthClient();
+      AuthService.setOAuthClient(mockClient as any);
+
+      const testState = 'dev-csrf-state-123';
+
+      const callbackRes = await request(app)
+        .get('/api/auth/google/callback')
+        .query({ code: 'valid-auth-code', state: testState })
+        .set('Cookie', [`${AuthService.STATE_COOKIE_NAME}=${testState}`]);
+
+      assert.equal(callbackRes.status, 302);
+      // In development mode, redirects to localhost:5173
+      assert.ok(callbackRes.headers.location.startsWith('http://localhost:5173/?auth_success=true'));
+    });
+
+    it('resolveFrontendUrl resolves correctly in production vs development', () => {
+      // Mock request from Vercel
+      const reqFromVercel = {
+        get: (h: string) => (h === 'x-forwarded-host' ? 'outbox-black.vercel.app' : h === 'x-forwarded-proto' ? 'https' : undefined),
+      };
+      assert.equal(resolveFrontendUrl(reqFromVercel), 'https://outbox-black.vercel.app');
+
+      // Request directly hitting Render backend should NOT use onrender.com as frontend origin
+      const reqDirectRender = {
+        get: (h: string) => (h === 'x-forwarded-host' ? 'outbox-w6d7.onrender.com' : undefined),
+      };
+      assert.equal(
+        resolveFrontendUrl(reqDirectRender),
+        env.NODE_ENV === 'production' ? 'https://outbox-black.vercel.app' : 'http://localhost:5173'
+      );
+    });
+
+    it('resolveGoogleCallbackUrl resolves to Vercel callback URL in production', () => {
+      const reqFromVercel = {
+        get: (h: string) => (h === 'x-forwarded-host' ? 'outbox-black.vercel.app' : h === 'x-forwarded-proto' ? 'https' : undefined),
+      };
+      assert.equal(
+        resolveGoogleCallbackUrl(reqFromVercel),
+        'https://outbox-black.vercel.app/api/auth/google/callback'
+      );
+    });
+
+    it('respects FRONTEND_URL or APP_URL when configured', () => {
+      const originalFrontendUrl = env.FRONTEND_URL;
+      const originalAppUrl = env.APP_URL;
+
+      try {
+        (env as any).FRONTEND_URL = 'https://custom-outbox.org';
+        assert.equal(resolveFrontendUrl(), 'https://custom-outbox.org');
+
+        (env as any).FRONTEND_URL = undefined;
+        (env as any).APP_URL = 'https://app-outbox.org';
+        assert.equal(resolveFrontendUrl(), 'https://app-outbox.org');
+      } finally {
+        (env as any).FRONTEND_URL = originalFrontendUrl;
+        (env as any).APP_URL = originalAppUrl;
+      }
+    });
+
+    it('replaces localhost callback with production callback when in production mode', () => {
+      const originalNodeEnv = env.NODE_ENV;
+      const originalCallback = process.env.GOOGLE_CALLBACK_URL;
+
+      try {
+        (env as any).NODE_ENV = 'production';
+        process.env.GOOGLE_CALLBACK_URL = 'http://localhost:5000/api/auth/google/callback';
+
+        // When GOOGLE_CALLBACK_URL was mistakenly set to localhost in production:
+        assert.equal(
+          resolveGoogleCallbackUrl(),
+          'https://outbox-black.vercel.app/api/auth/google/callback'
+        );
+      } finally {
+        (env as any).NODE_ENV = originalNodeEnv;
+        if (originalCallback !== undefined) {
+          process.env.GOOGLE_CALLBACK_URL = originalCallback;
+        } else {
+          delete process.env.GOOGLE_CALLBACK_URL;
+        }
+      }
+    });
   });
 });

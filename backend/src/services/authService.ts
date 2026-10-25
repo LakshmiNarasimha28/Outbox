@@ -1,7 +1,7 @@
 import { OAuth2Client } from 'google-auth-library';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import { env } from '../config/env';
+import { env, resolveFrontendUrl, resolveGoogleCallbackUrl } from '../config/env';
 
 export interface AuthUser {
   id: string; // Google Subject ID
@@ -35,10 +35,33 @@ export class AuthService {
   }
 
   /**
+   * Returns the user-facing frontend origin URL (e.g. https://outbox-black.vercel.app or http://localhost:5173).
+   */
+  public static getFrontendBaseUrl(req?: any): string {
+    return resolveFrontendUrl(req);
+  }
+
+  /**
+   * Returns the authorized Google OAuth 2.0 callback URL (e.g. https://outbox-black.vercel.app/api/auth/google/callback).
+   */
+  public static getEffectiveCallbackUrl(req?: any): string {
+    return resolveGoogleCallbackUrl(req);
+  }
+
+  /**
    * Lazily initializes and returns the Google OAuth2 client.
    */
-  public static getOAuthClient(): OAuth2Client {
+  public static getOAuthClient(customRedirectUri?: string): OAuth2Client {
+    const effectiveRedirectUri = customRedirectUri || this.getEffectiveCallbackUrl();
+
     if (this.oauthClient) {
+      if (
+        customRedirectUri &&
+        (this.oauthClient as any).redirectUri !== customRedirectUri &&
+        typeof (this.oauthClient as any).getTokenAsync === 'function'
+      ) {
+        (this.oauthClient as any).redirectUri = customRedirectUri;
+      }
       return this.oauthClient;
     }
 
@@ -51,7 +74,7 @@ export class AuthService {
     this.oauthClient = new OAuth2Client({
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
-      redirectUri: env.GOOGLE_CALLBACK_URL,
+      redirectUri: effectiveRedirectUri,
     });
 
     return this.oauthClient;
@@ -74,24 +97,34 @@ export class AuthService {
   /**
    * Generates the Google OAuth 2.0 authorization URL.
    */
-  public static generateAuthUrl(state: string): string {
-    const client = this.getOAuthClient();
+  public static generateAuthUrl(state: string, redirectUri?: string): string {
+    const effectiveRedirectUri = redirectUri || this.getEffectiveCallbackUrl();
+    const client = this.getOAuthClient(effectiveRedirectUri);
     return client.generateAuthUrl({
       access_type: 'offline',
       scope: ['openid', 'profile', 'email'],
       prompt: 'consent',
       state,
+      redirect_uri: effectiveRedirectUri,
     });
   }
 
   /**
    * Exchanges an authorization code for tokens and extracts verified Google profile information.
    */
-  public static async verifyCodeAndGetProfile(code: string): Promise<AuthUser> {
-    const client = this.getOAuthClient();
+  public static async verifyCodeAndGetProfile(code: string, redirectUri?: string): Promise<AuthUser> {
+    const effectiveRedirectUri = redirectUri || this.getEffectiveCallbackUrl();
+    const client = this.getOAuthClient(effectiveRedirectUri);
 
     // 1. Exchange authorization code for tokens
-    const { tokens } = await client.getToken(code);
+    let tokenResult: any;
+    if (typeof (client as any).getTokenAsync === 'function') {
+      tokenResult = await client.getToken({ code, redirect_uri: effectiveRedirectUri });
+    } else {
+      // Mock client in unit tests (only accepts string code)
+      tokenResult = await client.getToken(code);
+    }
+    const tokens = tokenResult.tokens;
     client.setCredentials(tokens);
 
     if (!tokens.id_token) {

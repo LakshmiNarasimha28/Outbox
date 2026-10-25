@@ -24,7 +24,8 @@ export class AuthController {
         AuthService.getStateCookieOptions()
       );
 
-      const authUrl = AuthService.generateAuthUrl(state);
+      const callbackUrl = AuthService.getEffectiveCallbackUrl(req);
+      const authUrl = AuthService.generateAuthUrl(state, callbackUrl);
 
       // If client requests JSON representation (e.g. for modal or SPA popup)
       if (req.query.format === 'json') {
@@ -51,7 +52,8 @@ export class AuthController {
    */
   public static async handleGoogleCallback(req: Request, res: Response): Promise<void> {
     const { code, state, error, error_description } = req.query as Record<string, string | undefined>;
-    const frontendBase = env.CORS_ORIGIN || 'http://localhost:5173';
+    const frontendBase = AuthService.getFrontendBaseUrl(req);
+    const callbackUrl = AuthService.getEffectiveCallbackUrl(req);
 
     // 1. Handle user cancellation or Google error
     if (error) {
@@ -81,7 +83,7 @@ export class AuthController {
 
     // 4. Exchange code for verified Google identity
     try {
-      const user = await AuthService.verifyCodeAndGetProfile(code);
+      const user = await AuthService.verifyCodeAndGetProfile(code, callbackUrl);
       const sessionToken = AuthService.signSessionToken(user);
 
       // 5. Set HttpOnly signed session cookie
