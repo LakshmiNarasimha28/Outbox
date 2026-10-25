@@ -15,7 +15,10 @@ import type {
   EmailJobRecord,
 } from '../types/email';
 
-const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+const envUrl = (import.meta.env.VITE_API_URL ?? import.meta.env.VITE_API_BASE_URL ?? '').trim().replace(/\/$/, '');
+// When deployed (or on non-localhost), ensure relative paths ('') are used so Vercel's same-origin proxy handles /api, /health, and /admin routes without CORS issues
+const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+const API_BASE = (!isLocalhost && (envUrl.includes('localhost') || envUrl.includes('onrender.com'))) ? '' : envUrl;
 
 export class ApiError extends Error {
   public status: number;

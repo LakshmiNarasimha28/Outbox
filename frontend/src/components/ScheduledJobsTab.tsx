@@ -1,15 +1,17 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import type { EmailJobRecord } from '../types/email';
 
 interface ScheduledJobsTabProps {
   onScheduleNewClick: () => void;
   onCountUpdate?: (count: number) => void;
+  searchFilter?: string;
 }
 
 export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
   onScheduleNewClick,
   onCountUpdate,
+  searchFilter = '',
 }) => {
   const [emails, setEmails] = useState<EmailJobRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,8 +22,9 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
   const [cancelLoading, setCancelLoading] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [localSearch, setLocalSearch] = useState('');
 
-  const fetchScheduledJobs = async () => {
+  const fetchScheduledJobs = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -34,7 +37,7 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [onCountUpdate]);
 
   const handleConfirmCancel = async () => {
     if (!cancellingJob) return;
@@ -54,7 +57,7 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
 
   useEffect(() => {
     fetchScheduledJobs();
-  }, []);
+  }, [fetchScheduledJobs]);
 
   // Auto-refresh interval (every 8 seconds if enabled)
   useEffect(() => {
@@ -73,7 +76,6 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
     return () => clearInterval(interval);
   }, [autoRefresh, onCountUpdate]);
 
-  // Helper for human-readable relative time calculation
   const getRelativeTimeString = (targetIsoDate: string) => {
     const diffMs = new Date(targetIsoDate).getTime() - Date.now();
     if (diffMs <= 0) return 'Executing now';
@@ -85,38 +87,71 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
     return `in ${hours}h ${minutes % 60}m`;
   };
 
+  const activeSearch = searchFilter || localSearch;
+
+  const filteredEmails = useMemo(() => {
+    if (!activeSearch.trim()) return emails;
+    const q = activeSearch.toLowerCase();
+    return emails.filter(
+      (job) =>
+        job.recipient.toLowerCase().includes(q) ||
+        job.subject.toLowerCase().includes(q) ||
+        job.sender.toLowerCase().includes(q)
+    );
+  }, [emails, activeSearch]);
+
   return (
-    <div className="max-w-6xl mx-auto space-y-6">
+    <div className="max-w-6xl mx-auto space-y-4">
       {/* Header and Controls */}
-      <div className="border border-slate-800 bg-slate-900/40 backdrop-blur-sm p-6 sm:p-8 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <div className="flex items-center space-x-2.5">
-            <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight">Scheduled Jobs Queue</h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+            <h2 className="text-lg font-bold text-gray-900 tracking-tight">Scheduled Jobs</h2>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
               {emails.length} Pending
             </span>
           </div>
-          <p className="text-slate-400 text-xs sm:text-sm mt-1">
-            Jobs queued in BullMQ delayed storage ready to be processed by background workers upon reaching their scheduled time.
+          <p className="text-xs text-gray-500 mt-0.5">
+            Pending jobs queued in BullMQ delayed storage waiting for execution.
           </p>
         </div>
 
         <div className="flex items-center space-x-3">
-          <label className="flex items-center space-x-2 text-xs text-slate-400 cursor-pointer select-none">
+          {/* Quick local search if not provided via toolbar */}
+          <div className="relative">
+            <input
+              type="text"
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              placeholder="Filter recipient or subject..."
+              className="w-44 sm:w-56 px-3 py-1.5 text-xs rounded-lg border border-gray-200 bg-gray-50 focus:bg-white focus:outline-none focus:border-emerald-500 transition-colors"
+            />
+            {localSearch && (
+              <button
+                onClick={() => setLocalSearch('')}
+                className="absolute right-2 top-1.5 text-gray-400 hover:text-gray-600 text-xs"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+
+          <label className="hidden sm:flex items-center space-x-1.5 text-xs text-gray-500 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={autoRefresh}
               onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0 cursor-pointer"
+              className="rounded border-gray-300 text-emerald-600 focus:ring-0 cursor-pointer"
             />
-            <span>Auto-refresh (8s)</span>
+            <span>Auto-refresh</span>
           </label>
 
           <button
             type="button"
             onClick={fetchScheduledJobs}
             disabled={loading}
-            className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-800 hover:bg-slate-700 active:bg-slate-900 text-slate-200 transition-colors border border-slate-700/80 flex items-center space-x-1.5 disabled:opacity-50"
+            className="p-2 sm:px-3 sm:py-1.5 rounded-lg text-xs font-medium bg-gray-50 hover:bg-gray-100 text-gray-700 transition-colors border border-gray-200 flex items-center space-x-1.5 disabled:opacity-50 cursor-pointer"
+            title="Refresh jobs list"
           >
             <svg
               className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`}
@@ -127,30 +162,24 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
-            <span>{loading ? 'Refreshing...' : 'Refresh'}</span>
+            <span className="hidden sm:inline">Refresh</span>
           </button>
         </div>
       </div>
 
-      {lastUpdated && (
-        <div className="flex justify-end text-[11px] text-slate-500 pr-2 -mt-4">
-          Last polled: {lastUpdated}
-        </div>
-      )}
-
       {/* Success Notice Banner */}
       {successNotice && (
-        <div className="border border-emerald-500/30 bg-emerald-950/20 rounded-xl p-4 flex items-center justify-between text-xs text-emerald-300">
-          <div className="flex items-center space-x-2.5">
-            <svg className="w-5 h-5 text-emerald-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-emerald-900 shadow-xs">
+          <div className="flex items-center space-x-2">
+            <svg className="w-4 h-4 text-emerald-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
             <span>{successNotice}</span>
           </div>
           <button
             onClick={() => setSuccessNotice(null)}
-            className="text-emerald-400 hover:text-white transition-colors"
-            title="Dismiss notice"
+            className="text-emerald-700 hover:text-emerald-950 cursor-pointer"
+            title="Dismiss"
           >
             ✕
           </button>
@@ -159,77 +188,80 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
 
       {/* Error Notice */}
       {error && (
-        <div className="border border-rose-500/30 bg-rose-950/20 rounded-xl p-4 flex items-center justify-between text-xs text-rose-300">
-          <div className="flex items-center space-x-2.5">
-            <svg className="w-5 h-5 text-rose-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 flex items-center justify-between text-xs text-rose-800 shadow-xs">
+          <div className="flex items-center space-x-2">
+            <svg className="w-4 h-4 text-rose-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <span>Failed to load scheduled jobs: {error}</span>
           </div>
           <button
             onClick={fetchScheduledJobs}
-            className="underline font-semibold hover:text-white"
+            className="underline font-semibold text-rose-900 hover:text-rose-950 cursor-pointer"
           >
             Try Again
           </button>
         </div>
       )}
 
-      {/* Scheduled Jobs Content */}
+      {/* Main Table / List View */}
       {loading && emails.length === 0 ? (
-        <div className="border border-slate-800 bg-slate-900/30 rounded-2xl p-12 text-center space-y-3">
-          <svg className="w-8 h-8 text-indigo-400 animate-spin mx-auto" fill="none" viewBox="0 0 24 24">
+        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center space-y-3 shadow-xs">
+          <svg className="w-6 h-6 text-emerald-600 animate-spin mx-auto" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
           </svg>
-          <p className="text-sm text-slate-400">Loading queued emails from MySQL...</p>
+          <p className="text-xs text-gray-500">Loading queued emails from MySQL...</p>
         </div>
-      ) : emails.length === 0 ? (
-        <div className="border border-slate-800 bg-slate-900/30 rounded-2xl p-12 text-center space-y-4">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto border border-indigo-500/20">
-            <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+      ) : filteredEmails.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-xl p-12 text-center space-y-3 shadow-xs">
+          <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto border border-emerald-100">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4" />
             </svg>
           </div>
           <div>
-            <h3 className="text-base font-semibold text-white">No Scheduled Emails in Queue</h3>
-            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-              There are currently no pending background jobs. You can compose and schedule a new email at any time.
+            <h3 className="text-sm font-semibold text-gray-900">
+              {activeSearch ? 'No matching scheduled emails found' : 'No Scheduled Emails in Queue'}
+            </h3>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {activeSearch ? 'Try clearing your search query' : 'There are currently no pending jobs scheduled for future delivery.'}
             </p>
           </div>
-          <button
-            onClick={onScheduleNewClick}
-            className="px-4 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 text-white transition-colors"
-          >
-            Compose New Email
-          </button>
+          {!activeSearch && (
+            <button
+              onClick={onScheduleNewClick}
+              className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer"
+            >
+              Compose Email
+            </button>
+          )}
         </div>
       ) : (
-        <div className="border border-slate-800 bg-slate-900/40 rounded-2xl overflow-hidden shadow-xl">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-xs">
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-950/80 text-slate-400 border-b border-slate-800 uppercase font-mono text-[10px]">
+              <thead className="bg-gray-50/80 text-gray-500 border-b border-gray-200 font-medium text-[11px]">
                 <tr>
-                  <th className="px-5 py-3.5">Recipient</th>
-                  <th className="px-5 py-3.5">Subject</th>
-                  <th className="px-5 py-3.5">Target Time</th>
-                  <th className="px-5 py-3.5">Delay / ETA</th>
-                  <th className="px-5 py-3.5">Status</th>
-                  <th className="px-5 py-3.5 text-right">Job ID</th>
-                  <th className="px-5 py-3.5 text-right">Action</th>
+                  <th className="px-4 py-3">Recipient</th>
+                  <th className="px-4 py-3">Subject</th>
+                  <th className="px-4 py-3">Target Time</th>
+                  <th className="px-4 py-3">ETA</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
-                {emails.map((job) => (
-                  <tr key={job.id} className="hover:bg-slate-800/30 transition-colors">
-                    <td className="px-5 py-4">
-                      <div className="font-medium text-slate-200">{job.recipient}</div>
-                      <div className="text-[10px] text-slate-500 mt-0.5">From: {job.sender}</div>
+              <tbody className="divide-y divide-gray-100">
+                {filteredEmails.map((job) => (
+                  <tr key={job.id} className="hover:bg-gray-50/70 transition-colors">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-900">{job.recipient}</div>
+                      <div className="text-[10px] text-gray-400">From: {job.sender}</div>
                     </td>
-                    <td className="px-5 py-4 max-w-xs truncate">
-                      <span className="font-semibold text-white">{job.subject}</span>
+                    <td className="px-4 py-3 max-w-xs truncate">
+                      <span className="font-medium text-gray-800">{job.subject}</span>
                     </td>
-                    <td className="px-5 py-4 whitespace-nowrap text-slate-300 font-mono">
+                    <td className="px-4 py-3 whitespace-nowrap text-gray-600 font-mono text-[11px]">
                       {new Date(job.scheduled_at).toLocaleString([], {
                         month: 'short',
                         day: 'numeric',
@@ -238,26 +270,23 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
                         second: '2-digit',
                       })}
                     </td>
-                    <td className="px-5 py-4 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-gray-100 text-gray-700">
                         {getRelativeTimeString(job.scheduled_at)}
                       </span>
                     </td>
-                    <td className="px-5 py-4 whitespace-nowrap">
+                    <td className="px-4 py-3 whitespace-nowrap">
                       {job.status === 'PROCESSING' ? (
-                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 animate-pulse">
-                          <span>PROCESSING</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 animate-pulse">
+                          PROCESSING
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/10 text-indigo-400 border border-indigo-500/30">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
                           PENDING
                         </span>
                       )}
                     </td>
-                    <td className="px-5 py-4 text-right font-mono text-[10px] text-slate-500">
-                      email-job-{job.id.slice(0, 8)}...
-                    </td>
-                    <td className="px-5 py-4 text-right whitespace-nowrap">
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
                       {job.status === 'PENDING' ? (
                         <button
                           type="button"
@@ -265,13 +294,13 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
                             setCancelError(null);
                             setCancellingJob(job);
                           }}
-                          className="px-2.5 py-1 rounded-lg text-xs font-semibold text-rose-400 hover:text-rose-200 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 transition-colors cursor-pointer"
-                          title="Cancel this scheduled email"
+                          className="px-2.5 py-1 rounded text-xs font-medium text-rose-600 hover:text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Cancel scheduled email"
                         >
                           Cancel
                         </button>
                       ) : (
-                        <span className="text-[11px] text-slate-500 italic">Processing</span>
+                        <span className="text-[11px] text-gray-400 italic">Processing</span>
                       )}
                     </td>
                   </tr>
@@ -279,48 +308,53 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
               </tbody>
             </table>
           </div>
+          {lastUpdated && (
+            <div className="px-4 py-2 border-t border-gray-100 text-right text-[10px] text-gray-400">
+              Updated: {lastUpdated}
+            </div>
+          )}
         </div>
       )}
 
       {/* Cancellation Confirmation Modal */}
       {cancellingJob && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 space-y-4 shadow-2xl">
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center flex-shrink-0">
+        <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white border border-gray-200 rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
+            <div className="flex items-start space-x-3">
+              <div className="w-9 h-9 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
                 <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                 </svg>
               </div>
               <div>
-                <h3 className="text-base font-bold text-white">Cancel Scheduled Email</h3>
-                <p className="text-xs text-slate-400 mt-0.5">Are you sure you want to cancel this dispatch?</p>
+                <h3 className="text-sm font-bold text-gray-900">Cancel Scheduled Email</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Are you sure you want to cancel this scheduled email?</p>
               </div>
             </div>
 
-            <div className="bg-slate-950/70 border border-slate-800/80 rounded-xl p-3.5 space-y-1.5 text-xs font-mono">
-              <div className="text-slate-300">
-                <span className="text-slate-500">To:</span> {cancellingJob.recipient}
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 space-y-1 text-xs">
+              <div className="text-gray-700">
+                <span className="text-gray-400">To:</span> {cancellingJob.recipient}
               </div>
-              <div className="text-slate-300 truncate">
-                <span className="text-slate-500">Subject:</span> {cancellingJob.subject}
+              <div className="text-gray-700 truncate">
+                <span className="text-gray-400">Subject:</span> {cancellingJob.subject}
               </div>
-              <div className="text-slate-400 text-[11px]">
-                <span className="text-slate-500">Scheduled:</span> {new Date(cancellingJob.scheduled_at).toLocaleString()}
+              <div className="text-gray-500 text-[11px]">
+                <span className="text-gray-400">Scheduled:</span> {new Date(cancellingJob.scheduled_at).toLocaleString()}
               </div>
             </div>
 
-            <p className="text-xs text-slate-400">
-              This email will be removed from the BullMQ delayed queue and will not be dispatched. Its history record will be preserved with status <span className="font-semibold text-rose-400">CANCELLED</span>.
+            <p className="text-xs text-gray-500">
+              The job will be safely removed from BullMQ and marked as <span className="font-semibold text-rose-600">CANCELLED</span> in MySQL audit history.
             </p>
 
             {cancelError && (
-              <div className="p-3 bg-rose-950/30 border border-rose-500/30 rounded-xl text-xs text-rose-300">
+              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700">
                 {cancelError}
               </div>
             )}
 
-            <div className="flex items-center justify-end space-x-3 pt-2">
+            <div className="flex items-center justify-end space-x-2 pt-1">
               <button
                 type="button"
                 disabled={cancelLoading}
@@ -328,7 +362,7 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
                   setCancellingJob(null);
                   setCancelError(null);
                 }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 hover:bg-gray-100 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 Keep Scheduled
               </button>
@@ -336,11 +370,11 @@ export const ScheduledJobsTab: React.FC<ScheduledJobsTabProps> = ({
                 type="button"
                 disabled={cancelLoading}
                 onClick={handleConfirmCancel}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 active:bg-rose-700 transition-colors disabled:opacity-50 flex items-center space-x-1.5 cursor-pointer"
+                className="px-3.5 py-1.5 rounded-lg text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 transition-colors disabled:opacity-50 flex items-center space-x-1.5 cursor-pointer"
               >
                 {cancelLoading && (
                   <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth={4} />
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                   </svg>
                 )}

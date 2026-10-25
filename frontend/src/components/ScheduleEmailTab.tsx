@@ -38,6 +38,9 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
   const [batchIdempotencyKey, setBatchIdempotencyKey] = useState<string>(() => crypto.randomUUID());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Advanced settings disclosure
+  const [showAdvanced, setShowAdvanced] = useState(false);
+
   // UI state
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -140,7 +143,7 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
     const errors: Record<string, string> = {};
 
     if (!subject.trim()) {
-      errors.subject = 'Subject is required';
+      errors.subject = 'Subject line is required';
     }
 
     if (!body.trim()) {
@@ -277,97 +280,87 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
-      {/* Header Banner */}
-      <div className="border border-slate-800 bg-slate-900/40 backdrop-blur-sm p-6 sm:p-8 rounded-2xl">
-        <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight flex items-center space-x-2.5">
-          <svg className="w-6 h-6 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-          </svg>
-          <span>Compose & Schedule Email</span>
-        </h2>
-        <p className="text-slate-400 text-xs sm:text-sm mt-1">
-          Supports single delivery or batch lead campaigns with CSV/text upload, staggered delays, and atomic rate limiting.
-        </p>
+    <div className="max-w-3xl mx-auto space-y-5">
+      {/* Compose Header & Mode Tabs */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-gray-900 tracking-tight">Compose Email</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Deliver immediately or schedule queue-backed dispatch with rate limits.
+          </p>
+        </div>
 
-        {/* Mode Selector Tabs */}
-        <div className="mt-5 flex items-center space-x-3 border-t border-slate-800/80 pt-4">
+        {/* Mode Toggle */}
+        <div className="inline-flex p-1 bg-gray-100 rounded-lg text-xs font-medium self-start sm:self-auto">
           <button
             type="button"
             onClick={() => {
               setTargetMode('single');
               setError(null);
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center space-x-2 ${
+            className={`px-3 py-1.5 rounded-md transition-all cursor-pointer ${
               targetMode === 'single'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
+                ? 'bg-white text-gray-900 font-semibold shadow-xs'
+                : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207" />
-            </svg>
-            <span>Single Recipient</span>
+            Single Recipient
           </button>
-
           <button
             type="button"
             onClick={() => {
               setTargetMode('batch');
               setError(null);
             }}
-            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-all flex items-center space-x-2 ${
+            className={`px-3 py-1.5 rounded-md transition-all flex items-center space-x-1.5 cursor-pointer ${
               targetMode === 'batch'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'bg-slate-950/60 text-slate-400 hover:text-slate-200 border border-slate-800'
+                ? 'bg-white text-gray-900 font-semibold shadow-xs'
+                : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-            </svg>
-            <span>Upload Leads (CSV / TXT)</span>
-            <span className="bg-indigo-500/20 text-indigo-300 text-[10px] px-1.5 py-0.5 rounded-full border border-indigo-500/30 font-mono">
-              Campaign
+            <span>Batch Leads</span>
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-full">
+              CSV/TXT
             </span>
           </button>
         </div>
       </div>
 
-      {/* Single Success Banner */}
+      {/* Success Notification - Single Email */}
       {singleSuccessResult && (
-        <div className="border border-emerald-500/30 bg-emerald-950/20 rounded-2xl p-6 space-y-4">
-          <div className="flex items-start space-x-3.5">
-            <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-xs text-emerald-900 shadow-xs space-y-3">
+          <div className="flex items-start space-x-3">
+            <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <div className="flex-1">
-              <h3 className="text-base font-semibold text-emerald-300">
-                {singleSuccessResult.idempotent ? 'Email Already Enqueued (Idempotent Hit)' : 'Email Job Scheduled Successfully!'}
+              <h3 className="text-sm font-semibold text-emerald-900">
+                {singleSuccessResult.idempotent ? 'Email Already Enqueued (Idempotent Hit)' : 'Email Job Scheduled Successfully'}
               </h3>
-              <p className="text-xs text-emerald-400/80 mt-1">
+              <p className="text-emerald-700 mt-0.5">
                 {singleSuccessResult.idempotent
                   ? 'A record with this idempotency key was previously created and is preserved in MySQL.'
-                  : 'Record persisted in MySQL and delayed job queued in Redis for background delivery.'}
+                  : `Queued in BullMQ for delivery to ${singleSuccessResult.email.recipient}.`}
               </p>
 
-              <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase">Job ID</span>
-                  <span className="font-mono text-slate-200 font-medium truncate block">
+              <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="bg-white/80 p-2 rounded-lg border border-emerald-200/60">
+                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Job ID</span>
+                  <span className="font-mono text-gray-800 font-medium truncate block">
                     {singleSuccessResult.jobId || `email-job-${singleSuccessResult.email.id}`}
                   </span>
                 </div>
-                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase">Recipient</span>
-                  <span className="font-mono text-slate-200 font-medium truncate block">
+                <div className="bg-white/80 p-2 rounded-lg border border-emerald-200/60">
+                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Recipient</span>
+                  <span className="font-mono text-gray-800 font-medium truncate block">
                     {singleSuccessResult.email.recipient}
                   </span>
                 </div>
-                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase">Scheduled At</span>
-                  <span className="font-mono text-slate-200 font-medium truncate block">
+                <div className="bg-white/80 p-2 rounded-lg border border-emerald-200/60">
+                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Scheduled For</span>
+                  <span className="font-mono text-gray-800 font-medium truncate block">
                     {new Date(singleSuccessResult.email.scheduled_at).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -377,23 +370,20 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center space-x-3">
+              <div className="mt-3.5 flex items-center space-x-3">
                 <button
                   type="button"
                   onClick={onNavigateToScheduled}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center space-x-1.5"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer"
                 >
-                  <span>View in Scheduled Jobs</span>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+                  View in Scheduled Jobs →
                 </button>
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-800 hover:text-emerald-950 transition-colors cursor-pointer"
                 >
-                  Schedule Another Email
+                  Compose Another
                 </button>
               </div>
             </div>
@@ -401,67 +391,62 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
         </div>
       )}
 
-      {/* Batch Success Banner */}
+      {/* Success Notification - Batch Leads */}
       {batchSuccessResult && (
-        <div className="border border-emerald-500/30 bg-emerald-950/20 rounded-2xl p-6 space-y-4">
-          <div className="flex items-start space-x-3.5">
-            <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-5 text-xs text-emerald-900 shadow-xs space-y-3">
+          <div className="flex items-start space-x-3">
+            <div className="w-7 h-7 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
               </svg>
             </div>
             <div className="flex-1">
-              <h3 className="text-base font-semibold text-emerald-300">
-                Lead Batch Scheduled Successfully!
+              <h3 className="text-sm font-semibold text-emerald-900">
+                Batch Campaign Scheduled Successfully
               </h3>
-              <p className="text-xs text-emerald-400/80 mt-1">
-                {batchSuccessResult.message}
-              </p>
+              <p className="text-emerald-700 mt-0.5">{batchSuccessResult.message}</p>
 
-              <div className="mt-3.5 grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
-                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase">Enqueued Jobs</span>
-                  <span className="font-mono text-emerald-400 font-bold text-sm block">
+              <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                <div className="bg-white/80 p-2 rounded-lg border border-emerald-200/60">
+                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Jobs Enqueued</span>
+                  <span className="font-mono text-emerald-700 font-bold text-sm block">
                     {batchSuccessResult.scheduledCount}
                   </span>
                 </div>
-                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase">Delay Between Emails</span>
-                  <span className="font-mono text-slate-200 font-medium block">
+                <div className="bg-white/80 p-2 rounded-lg border border-emerald-200/60">
+                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Delay Cadence</span>
+                  <span className="font-mono text-gray-800 font-medium block">
                     {batchSuccessResult.delayBetweenEmailsSeconds}s
                   </span>
                 </div>
-                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase">First Scheduled</span>
-                  <span className="font-mono text-slate-200 font-medium truncate block">
+                <div className="bg-white/80 p-2 rounded-lg border border-emerald-200/60">
+                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">First Start</span>
+                  <span className="font-mono text-gray-800 font-medium truncate block">
                     {new Date(batchSuccessResult.firstScheduledAt).toLocaleTimeString()}
                   </span>
                 </div>
-                <div className="bg-slate-900/60 p-2.5 rounded-lg border border-slate-800">
-                  <span className="text-slate-400 block text-[10px] uppercase">Last Scheduled</span>
-                  <span className="font-mono text-slate-200 font-medium truncate block">
+                <div className="bg-white/80 p-2 rounded-lg border border-emerald-200/60">
+                  <span className="text-gray-400 block text-[10px] uppercase font-semibold">Last ETA</span>
+                  <span className="font-mono text-gray-800 font-medium truncate block">
                     {new Date(batchSuccessResult.lastScheduledAt).toLocaleTimeString()}
                   </span>
                 </div>
               </div>
 
-              <div className="mt-4 flex items-center space-x-3">
+              <div className="mt-3.5 flex items-center space-x-3">
                 <button
                   type="button"
                   onClick={onNavigateToScheduled}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors flex items-center space-x-1.5"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer"
                 >
-                  <span>View in Scheduled Jobs</span>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
+                  View in Scheduled Jobs →
                 </button>
                 <button
                   type="button"
                   onClick={resetForm}
-                  className="px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium text-emerald-800 hover:text-emerald-950 transition-colors cursor-pointer"
                 >
-                  Schedule Another Campaign
+                  Compose Another
                 </button>
               </div>
             </div>
@@ -471,26 +456,44 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
 
       {/* Error Alert */}
       {error && (
-        <div className="border border-rose-500/30 bg-rose-950/20 rounded-xl p-4 flex items-start space-x-3 text-xs text-rose-300">
-          <svg className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        <div className="border border-rose-200 bg-rose-50 rounded-xl p-4 flex items-start space-x-3 text-xs text-rose-800">
+          <svg className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
           </svg>
           <div>
-            <p className="font-semibold text-rose-200">Unable to schedule</p>
-            <p className="mt-0.5 text-rose-300/90">{error}</p>
+            <p className="font-semibold text-rose-900">Unable to schedule email</p>
+            <p className="mt-0.5 text-rose-700">{error}</p>
           </div>
         </div>
       )}
 
-      {/* Main Scheduling Form */}
-      <form onSubmit={handleSubmit} className="border border-slate-800 bg-slate-900/50 backdrop-blur-sm rounded-2xl p-6 sm:p-8 space-y-6">
-        {/* Recipient Section: Single vs Batch */}
-        {targetMode === 'single' ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Single Recipient */}
-            <div className="space-y-1.5">
-              <label htmlFor="recipient-input" className="block text-xs font-semibold text-slate-300">
-                Recipient Email <span className="text-rose-400">*</span>
+      {/* Main Composer Form */}
+      <form onSubmit={handleSubmit} className="bg-white border border-gray-200 rounded-xl p-6 shadow-xs space-y-4">
+        {/* Sender & Recipient Row */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Sender */}
+          <div className="space-y-1">
+            <label htmlFor="sender-input" className="block text-xs font-semibold text-gray-700">
+              From
+            </label>
+            <div className="relative">
+              <input
+                id="sender-input"
+                type="text"
+                value={sender}
+                onChange={(e) => setSender(e.target.value)}
+                placeholder="scheduler@outbox.labs"
+                disabled={loading}
+                className="w-full px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 text-gray-900 text-xs focus:bg-white focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Single Recipient */}
+          {targetMode === 'single' && (
+            <div className="space-y-1">
+              <label htmlFor="recipient-input" className="block text-xs font-semibold text-gray-700">
+                To <span className="text-rose-500">*</span>
               </label>
               <input
                 id="recipient-input"
@@ -499,58 +502,40 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder="recipient@example.com"
                 disabled={loading}
-                className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border ${
-                  fieldErrors.recipient ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-800 focus:border-indigo-500'
-                } text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors`}
+                className={`w-full px-3 py-2 rounded-lg bg-white border ${
+                  fieldErrors.recipient ? 'border-rose-400 focus:ring-rose-400' : 'border-gray-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+                } text-gray-900 text-xs focus:outline-none transition-colors`}
               />
               {fieldErrors.recipient && (
-                <p className="text-[11px] text-rose-400">{fieldErrors.recipient}</p>
+                <p className="text-[11px] text-rose-600">{fieldErrors.recipient}</p>
               )}
             </div>
+          )}
+        </div>
 
-            {/* Sender */}
-            <div className="space-y-1.5">
-              <label htmlFor="sender-input" className="block text-xs font-semibold text-slate-300">
-                Sender Address
-              </label>
-              <input
-                id="sender-input"
-                type="email"
-                value={sender}
-                onChange={(e) => setSender(e.target.value)}
-                placeholder="scheduler@outbox.labs"
-                disabled={loading}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors"
-              />
-            </div>
-          </div>
-        ) : (
-          /* Batch Lead Upload Section */
-          <div className="space-y-4">
+        {/* Batch Leads Section */}
+        {targetMode === 'batch' && (
+          <div className="space-y-3 pt-1">
             <div className="flex items-center justify-between">
-              <label className="block text-xs font-semibold text-slate-300">
-                Upload Leads or Paste Addresses <span className="text-rose-400">*</span>
+              <label className="block text-xs font-semibold text-gray-700">
+                Recipients List <span className="text-rose-500">*</span>
               </label>
               <div className="flex items-center space-x-2 text-xs">
                 <button
                   type="button"
                   onClick={() => setLeadInputType('upload')}
-                  className={`px-2.5 py-1 rounded-lg transition-colors ${
-                    leadInputType === 'upload'
-                      ? 'bg-slate-800 text-white font-medium'
-                      : 'text-slate-400 hover:text-slate-200'
+                  className={`px-2 py-0.5 rounded cursor-pointer ${
+                    leadInputType === 'upload' ? 'bg-gray-200 text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   File Upload
                 </button>
-                <span className="text-slate-700">|</span>
+                <span className="text-gray-300">|</span>
                 <button
                   type="button"
                   onClick={() => setLeadInputType('paste')}
-                  className={`px-2.5 py-1 rounded-lg transition-colors ${
-                    leadInputType === 'paste'
-                      ? 'bg-slate-800 text-white font-medium'
-                      : 'text-slate-400 hover:text-slate-200'
+                  className={`px-2 py-0.5 rounded cursor-pointer ${
+                    leadInputType === 'paste' ? 'bg-gray-200 text-gray-900 font-medium' : 'text-gray-500 hover:text-gray-700'
                   }`}
                 >
                   Paste Text
@@ -559,7 +544,6 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
             </div>
 
             {leadInputType === 'upload' ? (
-              /* Drag & Drop Upload Zone */
               <div
                 onDragOver={(e) => {
                   e.preventDefault();
@@ -568,10 +552,10 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
                 onDragLeave={() => setIsDragging(false)}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition-all ${
                   isDragging
-                    ? 'border-indigo-500 bg-indigo-950/20'
-                    : 'border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-950/60'
+                    ? 'border-emerald-500 bg-emerald-50/50'
+                    : 'border-gray-300 bg-gray-50/50 hover:border-gray-400 hover:bg-gray-50'
                 }`}
               >
                 <input
@@ -581,100 +565,97 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
                   onChange={handleFileChange}
                   className="hidden"
                 />
-                <div className="flex flex-col items-center justify-center space-y-2">
-                  <div className="w-10 h-10 rounded-full bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                <div className="flex flex-col items-center justify-center space-y-1.5">
+                  <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </div>
                   <div>
-                    <span className="text-xs font-semibold text-slate-200">
+                    <span className="text-xs font-semibold text-gray-800">
                       {selectedFileName ? selectedFileName : 'Drop CSV or plain-text file here, or browse'}
                     </span>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Accepts .csv with email headers and .txt with comma, semicolon, or newline separated emails
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      Accepts CSV with email headers or TXT with comma/newline separated addresses
                     </p>
                   </div>
                 </div>
               </div>
             ) : (
-              /* Paste Text Directly */
-              <div className="space-y-2">
-                <textarea
-                  rows={4}
-                  value={rawTextContent}
-                  onChange={(e) => {
-                    setRawTextContent(e.target.value);
-                    processLeadContent(e.target.value);
-                  }}
-                  placeholder="Paste email addresses separated by commas, semicolons, tabs, or newlines..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:outline-none focus:border-indigo-500 transition-colors"
-                />
-              </div>
+              <textarea
+                rows={3}
+                value={rawTextContent}
+                onChange={(e) => {
+                  setRawTextContent(e.target.value);
+                  processLeadContent(e.target.value);
+                }}
+                placeholder="Paste emails separated by commas, semicolons, tabs, or newlines..."
+                className="w-full px-3 py-2 rounded-lg bg-white border border-gray-200 text-gray-800 text-xs font-mono focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+              />
             )}
 
-            {/* Parsing Spinner */}
+            {/* Parsing Indicator */}
             {parsingLeads && (
-              <div className="flex items-center space-x-2 text-xs text-indigo-400">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+              <div className="flex items-center space-x-2 text-xs text-emerald-600">
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
-                <span>Analyzing and validating email addresses...</span>
+                <span>Analyzing and validating addresses...</span>
               </div>
             )}
 
-            {/* Lead Validation & Duplicate Summary Card */}
+            {/* Extraction Results Badges */}
             {leadSummary && (
-              <div className="bg-slate-950/80 rounded-xl p-4 border border-slate-800 space-y-3">
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                  <div className="flex items-center space-x-3">
-                    <span className="font-semibold text-slate-300">Extraction Results:</span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-semibold text-gray-700">Leads Parsed:</span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                       {extractedRecipients.length} Valid Leads
                     </span>
                     {leadSummary.duplicatesRemoved > 0 && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-amber-50 text-amber-700 border border-amber-200">
                         {leadSummary.duplicatesRemoved} Duplicates Skipped
                       </span>
                     )}
                     {leadSummary.invalidCount > 0 && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200">
                         {leadSummary.invalidCount} Invalid Skipped
                       </span>
                     )}
                   </div>
-                  <span className="text-[11px] text-slate-500 font-mono">
-                    Total Detected: {leadSummary.totalDetected}
+                  <span className="text-[11px] text-gray-400 font-mono">
+                    Total Candidates: {leadSummary.totalDetected}
                   </span>
                 </div>
 
-                {/* Extracted Leads Pill Preview */}
+                {/* Recipient Chips Preview */}
                 {extractedRecipients.length > 0 && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-800/60">
-                    <span className="text-[11px] text-slate-400 block font-medium">
-                      Recipient List ({extractedRecipients.length} targets):
+                  <div className="pt-2 border-t border-gray-200">
+                    <span className="text-[11px] text-gray-500 block mb-1">
+                      Target Recipients ({extractedRecipients.length}):
                     </span>
-                    <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1">
-                      {extractedRecipients.slice(0, 50).map((email) => (
+                    <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
+                      {extractedRecipients.slice(0, 40).map((email) => (
                         <span
                           key={email}
-                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded-lg text-[10px] font-mono bg-slate-900 border border-slate-800 text-slate-300"
+                          className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-mono bg-white border border-gray-200 text-gray-700"
                         >
                           <span>{email}</span>
                           <button
                             type="button"
                             onClick={() => handleRemoveLead(email)}
-                            className="text-slate-500 hover:text-rose-400 transition-colors ml-1"
-                            title="Remove from batch"
+                            className="text-gray-400 hover:text-rose-600 ml-0.5 cursor-pointer"
+                            title="Remove lead"
                           >
                             ×
                           </button>
                         </span>
                       ))}
-                      {extractedRecipients.length > 50 && (
-                        <span className="text-[10px] text-slate-500 self-center">
-                          +{extractedRecipients.length - 50} more
+                      {extractedRecipients.length > 40 && (
+                        <span className="text-[10px] text-gray-400 self-center">
+                          +{extractedRecipients.length - 40} more
                         </span>
                       )}
                     </div>
@@ -683,62 +664,61 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
               </div>
             )}
             {fieldErrors.recipients && (
-              <p className="text-[11px] text-rose-400">{fieldErrors.recipients}</p>
+              <p className="text-[11px] text-rose-600">{fieldErrors.recipients}</p>
             )}
           </div>
         )}
 
         {/* Subject */}
-        <div className="space-y-1.5">
-          <label htmlFor="subject-input" className="block text-xs font-semibold text-slate-300">
-            Subject Line <span className="text-rose-400">*</span>
+        <div className="space-y-1">
+          <label htmlFor="subject-input" className="block text-xs font-semibold text-gray-700">
+            Subject <span className="text-rose-500">*</span>
           </label>
           <input
             id="subject-input"
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
-            placeholder="e.g. Welcome to Outbox Sequence"
+            placeholder="e.g. Outbox Sequence Update"
             disabled={loading}
-            className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border ${
-              fieldErrors.subject ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-800 focus:border-indigo-500'
-            } text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors`}
+            className={`w-full px-3 py-2 rounded-lg bg-white border ${
+              fieldErrors.subject ? 'border-rose-400 focus:ring-rose-400' : 'border-gray-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+            } text-gray-900 text-xs focus:outline-none transition-colors`}
           />
           {fieldErrors.subject && (
-            <p className="text-[11px] text-rose-400">{fieldErrors.subject}</p>
+            <p className="text-[11px] text-rose-600">{fieldErrors.subject}</p>
           )}
         </div>
 
-        {/* Body */}
-        <div className="space-y-1.5">
-          <label htmlFor="body-input" className="block text-xs font-semibold text-slate-300">
-            Email Content (Plain Text / HTML) <span className="text-rose-400">*</span>
+        {/* Message Content */}
+        <div className="space-y-1">
+          <label htmlFor="body-input" className="block text-xs font-semibold text-gray-700">
+            Body (Plain text / HTML) <span className="text-rose-500">*</span>
           </label>
           <textarea
             id="body-input"
             rows={5}
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Type your email message here. Sent via Ethereal SMTP with public preview inspection..."
+            placeholder="Write your email body here. Supports HTML formatting or plain text..."
             disabled={loading}
-            className={`w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border ${
-              fieldErrors.body ? 'border-rose-500 focus:ring-rose-500' : 'border-slate-800 focus:border-indigo-500'
-            } text-white text-sm focus:outline-none focus:ring-1 focus:ring-indigo-500 transition-colors`}
+            className={`w-full px-3 py-2 rounded-lg bg-white border ${
+              fieldErrors.body ? 'border-rose-400 focus:ring-rose-400' : 'border-gray-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500'
+            } text-gray-900 text-xs focus:outline-none transition-colors`}
           />
           {fieldErrors.body && (
-            <p className="text-[11px] text-rose-400">{fieldErrors.body}</p>
+            <p className="text-[11px] text-rose-600">{fieldErrors.body}</p>
           )}
         </div>
 
-        {/* Batch Timing & Delay Controls */}
+        {/* Batch Delivery Cadence (Visible in batch mode) */}
         {targetMode === 'batch' && (
-          <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-4">
-            <span className="block text-xs font-semibold text-slate-300">Batch Delivery Cadence</span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Delay between consecutive emails */}
+          <div className="p-3.5 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+            <span className="block text-xs font-semibold text-gray-700">Delivery Cadence & Rate Limits</span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label htmlFor="delay-input" className="block text-[11px] font-semibold text-slate-400">
-                  Delay Between Emails (Seconds)
+                <label htmlFor="delay-input" className="block text-[11px] text-gray-600">
+                  Delay Between Consecutive Emails (seconds)
                 </label>
                 <div className="flex items-center space-x-2">
                   <input
@@ -748,19 +728,15 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
                     max="3600"
                     value={delayBetweenEmailsSeconds}
                     onChange={(e) => setDelayBetweenEmailsSeconds(Math.max(0, parseInt(e.target.value, 10) || 0))}
-                    className="w-28 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-indigo-500"
+                    className="w-24 px-2.5 py-1 rounded border border-gray-300 bg-white text-gray-800 text-xs font-mono focus:border-emerald-500 focus:outline-none"
                   />
-                  <span className="text-[11px] text-slate-400">seconds</span>
+                  <span className="text-[11px] text-gray-500">sec</span>
                 </div>
-                <p className="text-[10px] text-slate-500">
-                  Staggers each subsequent lead by {delayBetweenEmailsSeconds}s to prevent rate burst.
-                </p>
               </div>
 
-              {/* Hourly sending limit */}
               <div className="space-y-1">
-                <label htmlFor="limit-input" className="block text-[11px] font-semibold text-slate-400">
-                  Sender Hourly Limit
+                <label htmlFor="limit-input" className="block text-[11px] text-gray-600">
+                  Hourly Sending Limit
                 </label>
                 <div className="flex items-center space-x-2">
                   <input
@@ -770,60 +746,43 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
                     max="1000"
                     value={hourlyRateLimit}
                     onChange={(e) => setHourlyRateLimit(Math.max(1, parseInt(e.target.value, 10) || 10))}
-                    className="w-28 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:outline-none focus:border-indigo-500"
+                    className="w-24 px-2.5 py-1 rounded border border-gray-300 bg-white text-gray-800 text-xs font-mono focus:border-emerald-500 focus:outline-none"
                   />
-                  <span className="text-[11px] text-slate-400">emails / hour</span>
+                  <span className="text-[11px] text-gray-500">emails / hour</span>
                 </div>
-                <p className="text-[10px] text-slate-500">
-                  Distributed Redis atomic limit. Over-quota emails are automatically delayed to the next hour.
-                </p>
               </div>
             </div>
 
-            {/* Campaign Duration Estimate */}
             {extractedRecipients.length > 0 && (
-              <div className="pt-2 border-t border-slate-800/60 text-[11px] text-indigo-300 flex items-center space-x-1.5">
-                <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span>
-                  Campaign Timeline: {extractedRecipients.length} emails staggered by {delayBetweenEmailsSeconds}s will span approximately{' '}
-                  <strong className="text-white font-mono">
-                    {Math.round((extractedRecipients.length * delayBetweenEmailsSeconds) / 60)} minutes
-                  </strong>{' '}
-                  (excluding hourly quota pauses).
-                </span>
-              </div>
+              <p className="text-[11px] text-gray-500">
+                Sequence estimated to take ~<strong>{Math.round((extractedRecipients.length * delayBetweenEmailsSeconds) / 60)} minutes</strong> across {extractedRecipients.length} recipients.
+              </p>
             )}
           </div>
         )}
 
-        {/* Schedule Mode Selector (Start Time) */}
-        <div className="space-y-3 pt-2 border-t border-slate-800/80">
-          <span className="block text-xs font-semibold text-slate-300">
-            {targetMode === 'batch' ? 'Campaign Start Time' : 'Execution Timing'}
-          </span>
+        {/* Schedule Timing Options */}
+        <div className="pt-2 border-t border-gray-100 space-y-3">
+          <label className="block text-xs font-semibold text-gray-700">Timing</label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setScheduleMode('now')}
-              className={`p-3.5 rounded-xl border text-left transition-all flex items-start space-x-3 ${
+              className={`p-3 rounded-lg border text-left transition-all flex items-start space-x-2.5 cursor-pointer ${
                 scheduleMode === 'now'
-                  ? 'border-indigo-500/80 bg-indigo-950/20 ring-1 ring-indigo-500/30'
-                  : 'border-slate-800 bg-slate-950/60 hover:bg-slate-900'
+                  ? 'border-emerald-500 bg-emerald-50/40 ring-1 ring-emerald-500/20'
+                  : 'border-gray-200 bg-white hover:bg-gray-50'
               }`}
             >
-              <div className={`w-4 h-4 rounded-full mt-0.5 border flex items-center justify-center ${
-                scheduleMode === 'now' ? 'border-indigo-400 bg-indigo-600' : 'border-slate-600'
+              <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center ${
+                scheduleMode === 'now' ? 'border-emerald-600 bg-emerald-600' : 'border-gray-300'
               }`}>
                 {scheduleMode === 'now' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
               </div>
               <div>
-                <span className="block text-xs font-semibold text-white">Start Immediately</span>
-                <span className="block text-[11px] text-slate-400 mt-0.5">
-                  {targetMode === 'batch'
-                    ? 'First email dispatched now, subsequent emails staggered by delay.'
-                    : 'Enqueues with zero delay for instant worker processing.'}
+                <span className="block text-xs font-semibold text-gray-900">Send Now</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">
+                  Queue for immediate background execution
                 </span>
               </div>
             </button>
@@ -831,33 +790,31 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
             <button
               type="button"
               onClick={() => setScheduleMode('later')}
-              className={`p-3.5 rounded-xl border text-left transition-all flex items-start space-x-3 ${
+              className={`p-3 rounded-lg border text-left transition-all flex items-start space-x-2.5 cursor-pointer ${
                 scheduleMode === 'later'
-                  ? 'border-indigo-500/80 bg-indigo-950/20 ring-1 ring-indigo-500/30'
-                  : 'border-slate-800 bg-slate-950/60 hover:bg-slate-900'
+                  ? 'border-emerald-500 bg-emerald-50/40 ring-1 ring-emerald-500/20'
+                  : 'border-gray-200 bg-white hover:bg-gray-50'
               }`}
             >
-              <div className={`w-4 h-4 rounded-full mt-0.5 border flex items-center justify-center ${
-                scheduleMode === 'later' ? 'border-indigo-400 bg-indigo-600' : 'border-slate-600'
+              <div className={`w-3.5 h-3.5 rounded-full mt-0.5 border flex items-center justify-center ${
+                scheduleMode === 'later' ? 'border-emerald-600 bg-emerald-600' : 'border-gray-300'
               }`}>
                 {scheduleMode === 'later' && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
               </div>
               <div>
-                <span className="block text-xs font-semibold text-white">Schedule Future Start Time</span>
-                <span className="block text-[11px] text-slate-400 mt-0.5">
-                  {targetMode === 'batch'
-                    ? 'Sequence begins at specified future date and paces forward.'
-                    : 'Enqueues as a BullMQ delayed job targeting a future time.'}
+                <span className="block text-xs font-semibold text-gray-900">Schedule for Later</span>
+                <span className="block text-[11px] text-gray-500 mt-0.5">
+                  BullMQ delayed job targeting specific date/time
                 </span>
               </div>
             </button>
           </div>
 
-          {/* Datetime Picker (Visible if 'later') */}
+          {/* Date & Time Picker */}
           {scheduleMode === 'later' && (
-            <div className="pt-2 space-y-1.5">
-              <label htmlFor="scheduled-datetime-input" className="block text-xs font-semibold text-slate-300">
-                Start Date & Time <span className="text-rose-400">*</span>
+            <div className="pt-1 space-y-1">
+              <label htmlFor="scheduled-datetime-input" className="block text-xs font-semibold text-gray-700">
+                Scheduled Execution Time <span className="text-rose-500">*</span>
               </label>
               <input
                 id="scheduled-datetime-input"
@@ -866,64 +823,71 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
                 value={scheduledAt}
                 onChange={(e) => setScheduledAt(e.target.value)}
                 disabled={loading}
-                className={`w-full sm:w-80 px-3.5 py-2 rounded-xl bg-slate-950 border ${
-                  fieldErrors.scheduledAt ? 'border-rose-500' : 'border-slate-800'
-                } text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500`}
+                className={`w-full sm:w-72 px-3 py-1.5 rounded-lg border ${
+                  fieldErrors.scheduledAt ? 'border-rose-400' : 'border-gray-300'
+                } bg-white text-gray-900 text-xs focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500`}
               />
               {fieldErrors.scheduledAt && (
-                <p className="text-[11px] text-rose-400">{fieldErrors.scheduledAt}</p>
+                <p className="text-[11px] text-rose-600">{fieldErrors.scheduledAt}</p>
               )}
             </div>
           )}
         </div>
 
-        {/* Idempotency Key Section */}
-        <div className="space-y-2 pt-2 border-t border-slate-800/80">
-          <div className="flex items-center justify-between">
-            <label htmlFor="idempotency-input" className="text-xs font-semibold text-slate-300 flex items-center space-x-1.5">
-              <span>{targetMode === 'batch' ? 'Batch Idempotency Key' : 'Idempotency Key'}</span>
-              <span className="text-[10px] text-slate-500 font-mono">(Client Deduplication)</span>
-            </label>
-            <button
-              type="button"
-              onClick={generateNewIdempotencyKey}
-              className="text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors flex items-center space-x-1"
-            >
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              <span>Regenerate Key</span>
-            </button>
-          </div>
-          <input
-            id="idempotency-input"
-            type="text"
-            value={targetMode === 'single' ? idempotencyKey : batchIdempotencyKey}
-            onChange={(e) =>
-              targetMode === 'single'
-                ? setIdempotencyKey(e.target.value)
-                : setBatchIdempotencyKey(e.target.value)
-            }
-            disabled={loading}
-            className="w-full px-3.5 py-2 font-mono text-xs rounded-xl bg-slate-950 border border-slate-800 text-slate-300 focus:outline-none focus:border-indigo-500"
-          />
-          <p className="text-[11px] text-slate-500">
-            {targetMode === 'batch'
-              ? 'Ensures each lead in the batch receives a unique, deterministic idempotency key. Resubmitting will not create duplicate emails.'
-              : 'Prevents accidental double-dispatch if network retries occur. Duplicate submissions safely return the original record.'}
-          </p>
+        {/* Collapsible Advanced Options (Hides raw idempotency key from normal view) */}
+        <div className="pt-2 border-t border-gray-100">
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="text-[11px] font-medium text-gray-500 hover:text-gray-800 flex items-center space-x-1.5 cursor-pointer"
+          >
+            <span>{showAdvanced ? '▾' : '▸'}</span>
+            <span>Advanced Settings (Idempotency Key & Deduplication)</span>
+          </button>
+
+          {showAdvanced && (
+            <div className="mt-3 p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <label htmlFor="idempotency-input" className="text-xs font-semibold text-gray-700">
+                  {targetMode === 'batch' ? 'Batch Idempotency Key' : 'Idempotency Key'}
+                </label>
+                <button
+                  type="button"
+                  onClick={generateNewIdempotencyKey}
+                  className="text-[11px] text-emerald-600 hover:text-emerald-700 font-medium cursor-pointer"
+                >
+                  Regenerate
+                </button>
+              </div>
+              <input
+                id="idempotency-input"
+                type="text"
+                value={targetMode === 'single' ? idempotencyKey : batchIdempotencyKey}
+                onChange={(e) =>
+                  targetMode === 'single'
+                    ? setIdempotencyKey(e.target.value)
+                    : setBatchIdempotencyKey(e.target.value)
+                }
+                disabled={loading}
+                className="w-full px-2.5 py-1.5 font-mono text-xs rounded border border-gray-300 bg-white text-gray-800 focus:outline-none focus:border-emerald-500"
+              />
+              <p className="text-[10px] text-gray-500">
+                Deterministic deduplication key. Duplicate submissions return the existing record safely.
+              </p>
+            </div>
+          )}
         </div>
 
-        {/* Action Button */}
-        <div className="pt-4 flex items-center justify-end space-x-3">
+        {/* Primary Action Button */}
+        <div className="pt-3 flex items-center justify-end">
           <button
             type="submit"
             disabled={loading || (targetMode === 'batch' && extractedRecipients.length === 0)}
-            className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-semibold bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            className="w-full sm:w-auto px-6 py-2.5 rounded-lg text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white transition-colors shadow-xs disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2 cursor-pointer"
           >
             {loading ? (
               <>
-                <svg className="w-4 h-4 animate-spin text-white" fill="none" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 animate-spin text-white" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
                 </svg>
@@ -935,7 +899,7 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
               </>
             ) : (
               <>
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
                 <span>
@@ -943,7 +907,7 @@ export const ScheduleEmailTab: React.FC<ScheduleEmailTabProps> = ({
                     ? `Schedule ${extractedRecipients.length > 0 ? extractedRecipients.length : ''} Leads Campaign`
                     : scheduleMode === 'now'
                     ? 'Send Email Now'
-                    : 'Schedule Delayed Email'}
+                    : 'Schedule Email'}
                 </span>
               </>
             )}
