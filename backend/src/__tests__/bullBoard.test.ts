@@ -202,21 +202,36 @@ describe('BullMQ Live Queue Monitoring Dashboard & Telemetry Tests', () => {
   });
 
   describe('Bull Board Routing, Static Assets & SPA Fallback Safety', () => {
-    it('should redirect /admin to /admin/queues', async () => {
-      const res = await request(app).get('/admin');
-      assert.equal(res.status, 302);
-      assert.equal(res.headers.location, '/admin/queues');
+    it('should redirect /admin and /admin/ to /admin/queues', async () => {
+      const res1 = await request(app).get('/admin');
+      assert.equal(res1.status, 302);
+      assert.equal(res1.headers.location, '/admin/queues');
+
+      const res2 = await request(app).get('/admin/');
+      assert.equal(res2.status, 302);
+      assert.equal(res2.headers.location, '/admin/queues');
     });
 
-    it('should serve Bull Board HTML dashboard at /admin/queues/ with proper base href and board title', async () => {
-      const res = await request(app)
+    it('should serve Bull Board HTML dashboard at both /admin/queues and /admin/queues/', async () => {
+      // With trailing slash
+      const resWithSlash = await request(app)
         .get('/admin/queues/')
         .set('Cookie', [`${AuthService.SESSION_COOKIE_NAME}=${validToken}`])
         .set('Accept', 'text/html');
 
-      assert.equal(res.status, 200);
-      assert.ok(res.text.includes('<title>Outbox Labs Queue Dashboard</title>'));
-      assert.ok(res.text.includes('<base href="/admin/queues/" />'));
+      assert.equal(resWithSlash.status, 200);
+      assert.ok(resWithSlash.text.includes('<title>Outbox Labs Queue Dashboard</title>'));
+      assert.ok(resWithSlash.text.includes('<base href="/admin/queues/" />'));
+
+      // Without trailing slash (matching iframe src)
+      const resWithoutSlash = await request(app)
+        .get('/admin/queues')
+        .set('Cookie', [`${AuthService.SESSION_COOKIE_NAME}=${validToken}`])
+        .set('Accept', 'text/html');
+
+      assert.equal(resWithoutSlash.status, 200);
+      assert.ok(resWithoutSlash.text.includes('<title>Outbox Labs Queue Dashboard</title>'));
+      assert.ok(resWithoutSlash.text.includes('<base href="/admin/queues/" />'));
     });
 
     it('should serve Bull Board static assets without intercepting with HTML SPA fallback', async () => {

@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/api",
+      "destination": "https://outbox-w6d7.onrender.com/api"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "https://outbox-w6d7.onrender.com/api/$1"
+    },
+    {
       "source": "/api/:path*",
       "destination": "https://outbox-w6d7.onrender.com/api/:path*"
     },
@@ -9,12 +17,20 @@
       "destination": "https://outbox-w6d7.onrender.com/health"
     },
     {
+      "source": "/health/(.*)",
+      "destination": "https://outbox-w6d7.onrender.com/health/$1"
+    },
+    {
       "source": "/health/:path*",
       "destination": "https://outbox-w6d7.onrender.com/health/:path*"
     },
     {
       "source": "/admin",
       "destination": "https://outbox-w6d7.onrender.com/admin"
+    },
+    {
+      "source": "/admin/(.*)",
+      "destination": "https://outbox-w6d7.onrender.com/admin/$1"
     },
     {
       "source": "/admin/:path*",

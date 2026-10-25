@@ -79,7 +79,7 @@ export function createApp(): Express {
   app.use('/api', apiRouter);
 
   // Bull Board Live Queue Dashboard
-  app.get('/admin', (_req: Request, res: Response) => res.redirect('/admin/queues'));
+  app.get(['/admin', '/admin/'], (_req: Request, res: Response) => res.redirect('/admin/queues'));
   setupBullBoard(app);
 
   // Serve compiled frontend assets and handle SPA routing in production
