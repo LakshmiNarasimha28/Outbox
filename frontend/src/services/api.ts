@@ -6,6 +6,8 @@ import type {
   SearchEmailParams,
   SearchEmailResponse,
   HealthResponse,
+  AuthMeResponse,
+  SlackStatusResponse,
 } from '../types/email';
 
 const API_BASE = '/api';
@@ -31,7 +33,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   let response: Response;
   try {
-    response = await fetch(url, { ...options, headers });
+    response = await fetch(url, {
+      ...options,
+      headers,
+      credentials: 'include', // Automatically send and receive HttpOnly session cookies
+    });
   } catch (netErr) {
     throw new ApiError(
       netErr instanceof Error ? `Network error: ${netErr.message}` : 'Network connection failed',
@@ -119,5 +125,67 @@ export const api = {
     return request<HealthResponse>('/health', {
       method: 'GET',
     });
+  },
+
+  /**
+   * Fetch current authenticated user and session status.
+   */
+  async getMe(): Promise<AuthMeResponse> {
+    return request<AuthMeResponse>('/api/auth/me', {
+      method: 'GET',
+    });
+  },
+
+  /**
+   * Log out of current session and clear session cookie.
+   */
+  async logout(): Promise<{ success: boolean; message: string }> {
+    return request<{ success: boolean; message: string }>('/api/auth/logout', {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Initiates Google OAuth login by redirecting the browser.
+   */
+  loginWithGoogle(): void {
+    window.location.href = '/api/auth/google';
+  },
+
+  /**
+   * Fetch current Slack connection status and channel metadata.
+   */
+  async getSlackStatus(): Promise<SlackStatusResponse> {
+    return request<SlackStatusResponse>('/api/slack/status', {
+      method: 'GET',
+    });
+  },
+
+  /**
+   * Initiates Slack OAuth v2 flow by redirecting the browser.
+   */
+  connectSlack(): void {
+    window.location.href = '/api/slack/authorize';
+  },
+
+  /**
+   * Disconnects current Slack workspace integration.
+   */
+  async disconnectSlack(): Promise<{ success: boolean; message: string }> {
+    return request<{ success: boolean; message: string }>('/api/slack/disconnect', {
+      method: 'POST',
+    });
+  },
+
+  /**
+   * Sends a real test hourly rate-limit alert to the connected Slack channel.
+   */
+  async testSlackNotification(): Promise<{ success: boolean; message: string; details?: any }> {
+    return request<{ success: boolean; message: string; details?: any }>(
+      '/api/slack/test-notification',
+      {
+        method: 'POST',
+      }
+    );
   },
 };

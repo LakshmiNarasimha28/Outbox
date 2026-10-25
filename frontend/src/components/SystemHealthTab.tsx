@@ -78,7 +78,7 @@ export const SystemHealthTab: React.FC<SystemHealthTabProps> = ({
       )}
 
       {/* Grid of Subsystems */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* Express Server */}
         <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5 space-y-4">
           <div className="flex items-center justify-between">
@@ -224,6 +224,80 @@ export const SystemHealthTab: React.FC<SystemHealthTabProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Google OAuth 2.0 */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-200">Google OAuth 2.0</span>
+            {health?.services.googleAuth?.configured ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                ACTIVE
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-700/60 text-slate-400 border border-slate-600/40">
+                PENDING
+              </span>
+            )}
+          </div>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between text-slate-400">
+              <span>Protocol:</span>
+              <span className="font-mono text-indigo-300">OpenID Connect</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Client Library:</span>
+              <span className="font-mono text-slate-200">google-auth-library</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Session Type:</span>
+              <span className="font-mono text-slate-200">HttpOnly JWT</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Callback:</span>
+              <span className="font-mono text-slate-200 truncate max-w-[120px]" title={health?.services.googleAuth?.callbackUrl}>
+                /api/auth/google/callback
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Slack OAuth v2 & Alerts */}
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-semibold text-slate-200">Slack OAuth v2</span>
+            {health?.services.slack?.configured ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                ACTIVE
+              </span>
+            ) : (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-700/60 text-slate-400 border border-slate-600/40">
+                PENDING
+              </span>
+            )}
+          </div>
+          <div className="space-y-2 text-xs">
+            <div className="flex justify-between text-slate-400">
+              <span>Scope:</span>
+              <span className="font-mono text-indigo-300">incoming-webhook</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Encryption:</span>
+              <span className="font-mono text-slate-200">AES-256-GCM</span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Deduplication:</span>
+              <span className="font-mono text-emerald-400 font-semibold">
+                {health?.services.slack?.cooldownSeconds ? `${health.services.slack.cooldownSeconds}s cooldown` : '900s cooldown'}
+              </span>
+            </div>
+            <div className="flex justify-between text-slate-400">
+              <span>Callback:</span>
+              <span className="font-mono text-slate-200 truncate max-w-[120px]" title={health?.services.slack?.callbackUrl}>
+                /api/auth/slack/callback
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Architectural Guarantee Checklist */}
@@ -247,6 +321,14 @@ export const SystemHealthTab: React.FC<SystemHealthTabProps> = ({
           <div className="flex items-center space-x-2.5 text-slate-300">
             <span className="w-4 h-4 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold">✓</span>
             <span>Ethereal SMTP with Public Inspection URLs</span>
+          </div>
+          <div className="flex items-center space-x-2.5 text-slate-300">
+            <span className="w-4 h-4 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold">✓</span>
+            <span>Google OAuth 2.0 with HttpOnly Session Cookies and CSRF State Verification</span>
+          </div>
+          <div className="flex items-center space-x-2.5 text-slate-300">
+            <span className="w-4 h-4 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-[10px] font-bold">✓</span>
+            <span>Per-User Email Data Isolation and Deterministic Access Control</span>
           </div>
         </div>
       </div>

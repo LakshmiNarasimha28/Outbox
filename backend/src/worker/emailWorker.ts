@@ -5,6 +5,7 @@ import { EmailJobRepository } from '../database/repositories/emailJobRepository'
 import { MailerService } from '../services/mailerService';
 import { RateLimiterService } from '../services/rateLimiterService';
 import { ElasticsearchService } from '../services/elasticsearchService';
+import { SlackService } from '../services/slackService';
 import { env } from '../config/env';
 
 let emailWorker: Worker<EmailJobData> | null = null;
@@ -89,6 +90,18 @@ export function initEmailWorker(): Worker<EmailJobData> | null {
           scheduled_at: nextDate,
           error_message: reason,
           attempts: Math.max(0, record.attempts - 1),
+        });
+
+        // Trigger Slack rate-limit alert (with Redis deduplication & cooldown)
+        // Dispatched asynchronously in background so email job rescheduling is never blocked or failed
+        SlackService.sendRateLimitNotification({
+          sender: record.sender,
+          limit: rateLimit.limit,
+          retryAfterMs: rateLimit.retryAfterMs,
+          resumeTime: nextDate,
+          userId: record.user_id,
+        }).catch((err) => {
+          console.warn('[Worker] Slack notification dispatch notice:', err);
         });
 
         // Reschedule in BullMQ delayed storage

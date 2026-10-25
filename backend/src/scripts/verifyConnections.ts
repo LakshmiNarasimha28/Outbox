@@ -94,6 +94,37 @@ async function runVerification() {
   }
   await ElasticsearchService.close();
 
+  // --- 5. Google OAuth 2.0 Verification ---
+  console.log('\n--- [5/6] Google OAuth 2.0 Configuration Verification ---');
+  const clientId = env.GOOGLE_CLIENT_ID;
+  const maskedClientId = clientId
+    ? `${clientId.slice(0, 8)}***${clientId.slice(-15)}`
+    : 'Not configured';
+  console.log(`Client ID : ${maskedClientId}`);
+  console.log(`Callback  : ${env.GOOGLE_CALLBACK_URL}`);
+
+  if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+    console.log(`Result    : [PASS] Google OAuth credentials configured & integration active`);
+  } else {
+    console.log(`Result    : [NOTICE] GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET not configured. (Google Sign-In is disabled until credentials are provided).`);
+  }
+
+  // --- 6. Slack OAuth v2 & Notification Verification ---
+  console.log('\n--- [6/6] Slack OAuth v2 & Rate-Limit Alerts Verification ---');
+  const slackClientId = env.SLACK_CLIENT_ID;
+  const maskedSlackId = slackClientId
+    ? `${slackClientId.slice(0, 6)}***${slackClientId.slice(-6)}`
+    : 'Not configured';
+  console.log(`Client ID : ${maskedSlackId}`);
+  console.log(`Callback  : ${env.SLACK_CALLBACK_URL}`);
+  console.log(`Cooldown  : ${env.SLACK_NOTIFICATION_COOLDOWN_SECONDS}s`);
+
+  if (env.SLACK_CLIENT_ID && env.SLACK_CLIENT_SECRET) {
+    console.log(`Result    : [PASS] Slack OAuth credentials configured & notifications active`);
+  } else {
+    console.log(`Result    : [NOTICE] SLACK_CLIENT_ID / SLACK_CLIENT_SECRET not configured. (Slack alerts disabled until credentials are provided).`);
+  }
+
   console.log('\n============================================================');
   if (blockers.length === 0) {
     console.log(`[STATUS: ALL CORE CONNECTIONS VERIFIED SUCCESSFULLY]`);

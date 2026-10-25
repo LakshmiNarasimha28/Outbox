@@ -17,6 +17,8 @@ export interface EmailJobRecord {
   error_message: string | null;
   ethereal_message_id: string | null;
   ethereal_preview_url: string | null;
+  user_id?: string | null;
+  user_email?: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 }
@@ -30,4 +32,6 @@ export interface CreateEmailJobInput {
   scheduled_at: Date;
   idempotency_key?: string | null;
   max_attempts?: number;
+  user_id?: string | null;
+  user_email?: string | null;
 }

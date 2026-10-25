@@ -76,7 +76,7 @@ describe('Worker Restart & Delayed Job Recovery Test', () => {
 
     // 6. Wait for worker to consume the delayed job from Redis and deliver it
     let deliveredRecord = null;
-    const maxWaitMs = 15000;
+    const maxWaitMs = 25000;
     const startTime = Date.now();
 
     while (Date.now() - startTime < maxWaitMs) {

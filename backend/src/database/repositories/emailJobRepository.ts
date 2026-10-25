@@ -15,12 +15,14 @@ export class EmailJobRepository {
     const maxAttempts = input.max_attempts ?? 3;
     const sender = input.sender || 'scheduler@outbox.labs';
     const idempotencyKey = input.idempotency_key || null;
+    const userId = input.user_id || null;
+    const userEmail = input.user_email || null;
 
     const query = `
       INSERT INTO email_jobs (
         id, recipient, subject, body, sender, scheduled_at,
-        status, idempotency_key, attempts, max_attempts
-      ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, 0, ?)
+        status, idempotency_key, attempts, max_attempts, user_id, user_email
+      ) VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, 0, ?, ?, ?)
     `;
 
     try {
@@ -33,6 +35,8 @@ export class EmailJobRepository {
         input.scheduled_at,
         idempotencyKey,
         maxAttempts,
+        userId,
+        userEmail,
       ]);
     } catch (err: any) {
       if ((err?.code === 'ER_DUP_ENTRY' || err?.errno === 1062) && idempotencyKey) {
@@ -52,12 +56,18 @@ export class EmailJobRepository {
   }
 
   /**
-   * Finds an email job by primary key ID.
+   * Finds an email job by primary key ID, optionally verifying user ownership.
    */
-  public static async findById(id: string): Promise<EmailJobRecord | null> {
+  public static async findById(id: string, userId?: string): Promise<EmailJobRecord | null> {
     const pool = getDatabasePool();
-    const query = `SELECT * FROM email_jobs WHERE id = ? LIMIT 1`;
-    const [rows] = await pool.query<EmailJobRow[]>(query, [id]);
+    let query = `SELECT * FROM email_jobs WHERE id = ?`;
+    const params: any[] = [id];
+    if (userId) {
+      query += ` AND (user_id = ? OR user_id IS NULL)`;
+      params.push(userId);
+    }
+    query += ` LIMIT 1`;
+    const [rows] = await pool.query<EmailJobRow[]>(query, params);
     return rows.length > 0 ? rows[0] : null;
   }
 
@@ -72,13 +82,14 @@ export class EmailJobRepository {
   }
 
   /**
-   * Lists email jobs with optional filtering by status, recipient, and pagination.
+   * Lists email jobs with optional filtering by status, recipient, userId, and pagination.
    */
   public static async findMany(filters: {
     status?: EmailStatus;
     recipient?: string;
     limit?: number;
     offset?: number;
+    userId?: string;
   }): Promise<{ total: number; emails: EmailJobRecord[] }> {
     const pool = getDatabasePool();
     const conditions: string[] = [];
@@ -92,6 +103,11 @@ export class EmailJobRepository {
     if (filters.recipient) {
       conditions.push('recipient = ?');
       params.push(filters.recipient);
+    }
+
+    if (filters.userId) {
+      conditions.push('(user_id = ? OR user_id IS NULL)');
+      params.push(filters.userId);
     }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -114,12 +130,25 @@ export class EmailJobRepository {
   }
 
   /**
-   * Lists scheduled emails that are either PENDING or currently PROCESSING.
+   * Lists scheduled emails that are either PENDING or currently PROCESSING, scoped by user.
    */
-  public static async findScheduled(limit: number = 50, offset: number = 0): Promise<{ total: number; emails: EmailJobRecord[] }> {
+  public static async findScheduled(
+    limit: number = 50,
+    offset: number = 0,
+    userId?: string
+  ): Promise<{ total: number; emails: EmailJobRecord[] }> {
     const pool = getDatabasePool();
-    const countQuery = `SELECT COUNT(*) as count FROM email_jobs WHERE status IN ('PENDING', 'PROCESSING')`;
-    const [countRows] = await pool.query<(RowDataPacket & { count: number })[]>(countQuery);
+    const conditions = ["status IN ('PENDING', 'PROCESSING')"];
+    const params: (string | number)[] = [];
+
+    if (userId) {
+      conditions.push('(user_id = ? OR user_id IS NULL)');
+      params.push(userId);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    const countQuery = `SELECT COUNT(*) as count FROM email_jobs ${where}`;
+    const [countRows] = await pool.query<(RowDataPacket & { count: number })[]>(countQuery, params);
     const total = countRows[0]?.count ?? 0;
 
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -127,22 +156,35 @@ export class EmailJobRepository {
 
     const query = `
       SELECT * FROM email_jobs
-      WHERE status IN ('PENDING', 'PROCESSING')
+      ${where}
       ORDER BY scheduled_at ASC
       LIMIT ? OFFSET ?
     `;
 
-    const [rows] = await pool.query<EmailJobRow[]>(query, [safeLimit, safeOffset]);
+    const [rows] = await pool.query<EmailJobRow[]>(query, [...params, safeLimit, safeOffset]);
     return { total, emails: rows };
   }
 
   /**
-   * Lists completed emails that are either SENT or FAILED.
+   * Lists completed emails that are either SENT or FAILED, scoped by user.
    */
-  public static async findHistory(limit: number = 50, offset: number = 0): Promise<{ total: number; emails: EmailJobRecord[] }> {
+  public static async findHistory(
+    limit: number = 50,
+    offset: number = 0,
+    userId?: string
+  ): Promise<{ total: number; emails: EmailJobRecord[] }> {
     const pool = getDatabasePool();
-    const countQuery = `SELECT COUNT(*) as count FROM email_jobs WHERE status IN ('SENT', 'FAILED', 'CANCELLED')`;
-    const [countRows] = await pool.query<(RowDataPacket & { count: number })[]>(countQuery);
+    const conditions = ["status IN ('SENT', 'FAILED', 'CANCELLED')"];
+    const params: (string | number)[] = [];
+
+    if (userId) {
+      conditions.push('(user_id = ? OR user_id IS NULL)');
+      params.push(userId);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
+    const countQuery = `SELECT COUNT(*) as count FROM email_jobs ${where}`;
+    const [countRows] = await pool.query<(RowDataPacket & { count: number })[]>(countQuery, params);
     const total = countRows[0]?.count ?? 0;
 
     const safeLimit = Math.min(Math.max(limit, 1), 100);
@@ -150,12 +192,12 @@ export class EmailJobRepository {
 
     const query = `
       SELECT * FROM email_jobs
-      WHERE status IN ('SENT', 'FAILED', 'CANCELLED')
+      ${where}
       ORDER BY updated_at DESC
       LIMIT ? OFFSET ?
     `;
 
-    const [rows] = await pool.query<EmailJobRow[]>(query, [safeLimit, safeOffset]);
+    const [rows] = await pool.query<EmailJobRow[]>(query, [...params, safeLimit, safeOffset]);
     return { total, emails: rows };
   }
 

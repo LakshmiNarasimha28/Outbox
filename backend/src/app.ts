@@ -1,9 +1,10 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
-import cors from 'express';
 import corsMiddleware from 'cors';
+import cookieParser from 'cookie-parser';
 import { env } from './config/env';
 import { apiRouter } from './routes';
 import { healthRoutes } from './routes/healthRoutes';
+import { authenticateSession } from './middleware/authMiddleware';
 
 export function createApp(): Express {
   const app = express();
@@ -17,9 +18,13 @@ export function createApp(): Express {
     })
   );
 
-  // Body parser middleware
+  // Body parser & cookie parser middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(cookieParser(env.SESSION_SECRET));
+
+  // Authenticate session on all incoming requests
+  app.use(authenticateSession);
 
   // Request logger (safe: logs method, URL, and status; never logs headers, auth tokens, or passwords)
   app.use((req: Request, res: Response, next: NextFunction) => {

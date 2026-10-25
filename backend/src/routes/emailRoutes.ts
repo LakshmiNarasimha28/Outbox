@@ -1,7 +1,11 @@
 import { Router } from 'express';
 import { EmailController } from '../controllers/emailController';
+import { requireAuth } from '../middleware/authMiddleware';
 
 const router = Router();
+
+// Protect all email management endpoints with authentication middleware
+router.use(requireAuth);
 
 /**
  * @route   POST /api/emails/schedule

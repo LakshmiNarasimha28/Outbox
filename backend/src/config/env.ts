@@ -173,6 +173,50 @@ const envSchema = z.object({
     .refine((val) => !isNaN(val) && val >= 1000, {
       message: 'ELASTICSEARCH_REQUEST_TIMEOUT_MS must be at least 1000 ms',
     }),
+
+  // Google OAuth 2.0 & Session Configuration
+  GOOGLE_CLIENT_ID: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
+  GOOGLE_CLIENT_SECRET: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
+  GOOGLE_CALLBACK_URL: z
+    .string()
+    .default('http://localhost:5000/api/auth/google/callback'),
+  SESSION_SECRET: z
+    .string()
+    .default('outbox-super-secure-session-secret-change-in-prod'),
+  AUTH_ENFORCED: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true' || val === '1'),
+
+  // Slack OAuth v2 & Notification Configuration
+  SLACK_CLIENT_ID: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
+  SLACK_CLIENT_SECRET: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
+  SLACK_CALLBACK_URL: z
+    .string()
+    .default('http://localhost:5000/api/auth/slack/callback'),
+  SLACK_NOTIFICATION_COOLDOWN_SECONDS: z
+    .string()
+    .default('900') // 15 minutes cooldown to avoid rate-limit spam
+    .transform((val) => parseInt(val, 10))
+    .refine((val) => !isNaN(val) && val >= 10, {
+      message: 'SLACK_NOTIFICATION_COOLDOWN_SECONDS must be at least 10 seconds',
+    }),
+  ENCRYPTION_KEY: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
 });
 
 export type Env = z.infer<typeof envSchema>;

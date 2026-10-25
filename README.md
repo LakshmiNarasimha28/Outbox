@@ -2,7 +2,7 @@
 
 > **Hiring Assignment Submission**
 > **Deadline:** October 25, 2026, 12:00 PM IST
-> **Current Status:** Phase 3 Complete (Distributed Rate Limiting + Elasticsearch Integration Operational)
+> **Current Status:** Phase 4 Complete (Google OAuth 2.0 + Distributed Rate Limiting + Elasticsearch Integration Operational)
 
 ---
 
@@ -12,6 +12,7 @@ The **Outbox Labs Email Job Scheduler** is a distributed background job scheduli
 
 ### Core Tech Stack
 - **Backend:** Node.js 24 + Express.js + TypeScript
+- **Authentication:** Google OAuth 2.0 + OpenID Connect (`google-auth-library` + HttpOnly JWT Sessions)
 - **Queue & Storage:** BullMQ + ioredis (Hosted Upstash Redis) + MySQL 8 (mysql2)
 - **Search & Indexing:** Elasticsearch 8/9 (`@elastic/elasticsearch`)
 - **Email Delivery:** Nodemailer + Ethereal SMTP
@@ -70,37 +71,43 @@ Outbox/
 │   ├── package.json             # Backend dependencies and scripts
 │   ├── tsconfig.json            # Strict TypeScript configuration
 │   └── src/
-│       ├── __tests__/           # Automated test suites (27 tests across 6 suites)
+│       ├── __tests__/           # Automated test suites (35 tests across 7 suites)
 │       │   ├── emailValidation.test.ts      # Unit tests for Zod schemas
 │       │   ├── emailApi.test.ts             # API integration tests (Supertest)
 │       │   ├── emailEndToEndWorker.test.ts  # End-to-end BullMQ -> Ethereal delivery
 │       │   ├── emailRestartRecovery.test.ts # Queue persistence & restart recovery
 │       │   ├── rateLimiter.test.ts          # Distributed sliding-window rate limiting
-│       │   └── elasticsearch.test.ts        # Indexing, lifecycle sync, search & resilience
+│       │   ├── elasticsearch.test.ts        # Indexing, lifecycle sync, search & resilience
+│       │   └── googleAuth.test.ts           # Google OAuth 2.0 login, CSRF, sessions & data isolation
 │       ├── config/
 │       │   └── env.ts           # Zod schema validation & robust .env loader
 │       ├── controllers/
-│       │   └── emailController.ts # Scheduling, listing, details & Elasticsearch search handlers
+│       │   ├── emailController.ts # Scheduling, listing, details & Elasticsearch search handlers
+│       │   └── authController.ts  # Google OAuth initiation, callback, me, and logout handlers
 │       ├── database/
 │       │   ├── models/
-│       │   │   └── emailJob.ts  # TypeScript interfaces & types
+│       │   │   └── emailJob.ts  # TypeScript interfaces & types (with user_id & user_email)
 │       │   ├── repositories/
-│       │   │   └── emailJobRepository.ts # MySQL CRUD & state transitions
+│       │   │   └── emailJobRepository.ts # MySQL CRUD, state transitions & user data isolation
 │       │   ├── initSchema.ts    # Database schema migration runner
 │       │   ├── mysql.ts         # Connection pool & health probe
 │       │   └── schema.sql       # MySQL table definition with indexes & constraints
+│       ├── middleware/
+│       │   └── authMiddleware.ts # authenticateSession & requireAuth middlewares
 │       ├── queue/
 │       │   ├── emailQueue.ts    # BullMQ Queue & deterministic delayed job enqueue
 │       │   └── redis.ts         # Hosted Redis config (TLS, retry policy, no-eval fallback)
 │       ├── routes/
 │       │   ├── emailRoutes.ts   # /api/emails endpoints (including /search)
+│       │   ├── authRoutes.ts    # /api/auth endpoints (/google, /google/callback, /me, /logout)
 │       │   ├── healthRoutes.ts  # /health and /health/live endpoints
 │       │   └── index.ts         # Root API router
 │       ├── scripts/
 │       │   ├── createEtherealAccount.ts # Ethereal test credential generator
-│       │   ├── verifyConnections.ts     # 4-way CLI connectivity verification
+│       │   ├── verifyConnections.ts     # 5-way CLI connectivity verification
 │       │   └── syncElasticsearch.ts     # Full MySQL -> Elasticsearch reconciliation tool
 │       ├── services/
+│       │   ├── authService.ts           # Google OAuth2Client, ID token verification & JWT sessions
 │       │   ├── elasticsearchService.ts  # Elasticsearch client, explicit mapping & queries
 │       │   ├── healthService.ts         # Aggregated system health reporter
 │       │   ├── mailerService.ts         # Nodemailer Ethereal SMTP transport service
@@ -300,6 +307,15 @@ ELASTICSEARCH_USERNAME=elastic
 ELASTICSEARCH_PASSWORD=your_elastic_password
 ELASTICSEARCH_API_KEY=
 ELASTICSEARCH_REQUEST_TIMEOUT_MS=5000
+
+# Google OAuth 2.0 & Session Configuration
+# Obtain credentials from https://console.cloud.google.com/apis/credentials
+# Authorized Redirect URI: http://localhost:5000/api/auth/google/callback
+GOOGLE_CLIENT_ID=your_google_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_google_client_secret
+GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
+SESSION_SECRET=your_random_32_character_session_signing_secret
+AUTH_ENFORCED=false
 ```
 
 *(Tip: Run `npm run ethereal:create` to automatically generate and save Ethereal credentials).*
@@ -309,7 +325,7 @@ ELASTICSEARCH_REQUEST_TIMEOUT_MS=5000
 npm run db:migrate
 ```
 
-### Step 4: Verify All Connections (MySQL, Redis, SMTP, Elasticsearch)
+### Step 4: Verify All Connections (MySQL, Redis, SMTP, Elasticsearch, Google OAuth)
 ```powershell
 npm run verify:connections
 ```
@@ -477,17 +493,116 @@ If `ELASTICSEARCH_NODE` is not configured or the cluster is temporarily unreacha
 
 ---
 
-## 10. Verification Results
+## 11. Google OAuth 2.0 Authentication & Session Architecture
+
+The application implements real Google OAuth 2.0 authentication powered by Google's official `google-auth-library` and OpenID Connect standards.
+
+### Authentication Flow & Lifecycle
+1. **Login Initiation (`GET /api/auth/google`):**
+   - Generates a cryptographically random 24-byte `state` parameter to prevent CSRF attacks.
+   - Stores the state in a short-lived (10 min) `HttpOnly`, `SameSite=Lax` cookie (`oauth_state`).
+   - Redirects the browser to Google's consent screen requesting `openid`, `profile`, and `email` scopes.
+2. **Callback Handling (`GET /api/auth/google/callback`):**
+   - Validates that the callback `state` matches the `oauth_state` cookie.
+   - Exchanges the authorization `code` for Google OAuth tokens via `OAuth2Client.getToken()`.
+   - Cryptographically verifies the Google ID token via `OAuth2Client.verifyIdToken()`, ensuring audience matches `GOOGLE_CLIENT_ID`.
+   - Extracts verified Google user identity: `{ id: sub, email, name, avatar: picture }`.
+3. **Session Strategy:**
+   - Issues a secure JWT signed with `SESSION_SECRET` (algorithm: `HS256`, 7-day expiration).
+   - Transmits the JWT in a secure, `HttpOnly`, `SameSite=Lax` cookie named `outbox_session`.
+   - The browser automatically sends this cookie on all API requests without exposing tokens to frontend JavaScript.
+4. **Session Inspection & Logout:**
+   - `GET /api/auth/me`: Verifies the session cookie and returns `{ authenticated: true, user: { id, email, name, avatar } }`.
+   - `POST /api/auth/logout`: Clears the `outbox_session` cookie and ends the session.
+
+### Data Ownership & Per-User Isolation
+- The MySQL `email_jobs` table stores `user_id` (Google Subject ID) and `user_email`.
+- Scheduled jobs created by an authenticated user are associated with their `user_id`.
+- Email queries (`/api/emails`, `/api/emails/scheduled`, `/api/emails/history`, `/api/emails/:id`) strictly isolate data so **User A cannot view or retrieve User B's private email records**.
+- **Legacy Record Compatibility:** Existing records without an owner (`user_id IS NULL`) remain accessible for system inspection and backward compatibility.
+
+### Google Cloud Console Configuration Guide
+To configure Google OAuth credentials:
+1. Navigate to the [Google Cloud Console](https://console.cloud.google.com/apis/credentials).
+2. Create or select a project.
+3. Configure the **OAuth consent screen** (User Type: External, Scopes: `openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`).
+4. Go to **Credentials** -> **Create Credentials** -> **OAuth client ID**.
+5. Select **Application type:** *Web application*.
+6. Add **Authorized JavaScript origins**:
+   - `http://localhost:5173`
+   - `http://127.0.0.1:5173`
+7. Add **Authorized redirect URIs**:
+   - `http://localhost:5000/api/auth/google/callback`
+8. Copy the **Client ID** and **Client secret** into `backend/.env`:
+   ```env
+   GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=your_client_secret
+   GOOGLE_CALLBACK_URL=http://localhost:5000/api/auth/google/callback
+   SESSION_SECRET=your_random_32_character_signing_secret
+   AUTH_ENFORCED=true
+   ```
+
+---
+
+## 11. Slack OAuth v2 & Hourly Rate-Limit Notifications
+
+The application implements real Slack OAuth v2 integration to automatically notify teams when a sender reaches their hourly email sending limit.
+
+### Architecture & Security Guarantees
+1. **Genuine Slack OAuth v2 Flow:**
+   - **Authorization initiation:** `GET /api/slack/authorize` (or `/api/auth/slack`) sets a signed `slack_oauth_state` cookie and redirects to `https://slack.com/oauth/v2/authorize`.
+   - **Scopes:** Requests minimal bot scopes: `incoming-webhook` and `chat:write`.
+   - **Callback handling:** `GET /api/slack/callback` (or `/api/auth/slack/callback`) validates CSRF state, exchanges code via `POST https://slack.com/api/oauth.v2.access`, and records metadata.
+2. **Encryption at Rest (AES-256-GCM):**
+   - Access tokens and webhook URLs are encrypted at rest using AES-256-GCM before storage in MySQL table `slack_integrations`.
+   - Plaintext credentials and webhook URLs are **never exposed** through API responses or logged in console logs.
+3. **Multi-Tenant Connection Isolation:**
+   - Slack connections are strictly associated with the authenticated user (`user_id`).
+   - User A cannot view, access, or disconnect User B's Slack workspace.
+4. **Redis-Backed Alert Deduplication & Cooldown:**
+   - When a sender hits the hourly sending limit, queued jobs are automatically rescheduled.
+   - To prevent spamming the Slack channel when dozens of queued jobs are rescheduled in rapid succession, the system coordinates an atomic cooldown lock in Redis:
+     `slack:ratelimit:cooldown:{sender}` with a configurable TTL (`SLACK_NOTIFICATION_COOLDOWN_SECONDS`, default: 900s).
+   - Exactly **1 alert** is dispatched per sender per cooldown window.
+5. **Non-Blocking Fault Isolation:**
+   - Slack notification dispatches are non-blocking and isolated in try-catch handlers with timeouts.
+   - Slack API outages or revoked tokens **never drop scheduled emails**, **never burn retry attempts**, and **never crash BullMQ worker processes**.
+   - If Slack returns `token_revoked` or HTTP 404/410, the integration status is automatically marked as `REVOKED`.
+6. **Privacy Guarantee:**
+   - Rate-limit alerts include only operational metadata (sender address, quota limit, approximate resume time, estimated delay).
+   - Alerts **never contain email bodies, recipient addresses, or credentials**.
+
+### Slack App Setup Guide
+1. Navigate to [api.slack.com/apps](https://api.slack.com/apps) and click **Create New App** -> **From scratch**.
+2. Go to **OAuth & Permissions**:
+   - Add **Redirect URL**: `http://localhost:5000/api/auth/slack/callback`.
+   - Under **Scopes** -> **Bot Token Scopes**, add:
+     - `incoming-webhook`
+     - `chat:write`
+3. Go to **Basic Information** -> **App Credentials**:
+   - Copy **Client ID** and **Client Secret** into `backend/.env`:
+     ```env
+     SLACK_CLIENT_ID=your_slack_client_id
+     SLACK_CLIENT_SECRET=your_slack_client_secret
+     SLACK_CALLBACK_URL=http://localhost:5000/api/auth/slack/callback
+     SLACK_NOTIFICATION_COOLDOWN_SECONDS=900
+     ```
+
+---
+
+## 12. Verification Results
 
 | Suite / Check | Result | Details |
 | :--- | :--- | :--- |
-| **Connection Verification (`verify:connections`)** | **ALL PASSED** | MySQL (56ms), Hosted Redis (175ms), Ethereal SMTP (3426ms), Elasticsearch Status Probe |
+| **Connection Verification (`verify:connections`)** | **ALL PASSED** | MySQL (42ms), Hosted Redis (162ms), Ethereal SMTP (3166ms), Elasticsearch Status, Google OAuth Probe, Slack OAuth Probe |
 | **Validation Unit Tests (`emailValidation.test.ts`)** | **6 / 6 PASSED** | Zod schemas for recipient, subject, body, dates, and query limits |
 | **API Integration Tests (`emailApi.test.ts`)** | **6 / 6 PASSED** | Scheduling, 400 validations, idempotency handling, paginated listing |
 | **End-to-End Worker Delivery (`emailEndToEndWorker.test.ts`)** | **1 / 1 PASSED** | Schedule -> BullMQ delay -> Worker pickup -> Ethereal delivery -> MySQL `SENT` status |
 | **Worker Restart & Recovery (`emailRestartRecovery.test.ts`)** | **1 / 1 PASSED** | Queue persistence across worker downtime and immediate processing upon recovery |
 | **Distributed Rate Limiting (`rateLimiter.test.ts`)** | **6 / 6 PASSED** | Atomic sliding window, sender isolation, refunding on failure, telemetry API, worker auto-reschedule, and explicit Redis error handling |
 | **Elasticsearch Integration & Search (`elasticsearch.test.ts`)** | **7 / 7 PASSED** | Document mapping, idempotent upsert, lifecycle sync (PROCESSING/SENT/FAILED), full-text search, date filters, bulk sync, and outage resilience |
-| **Total Automated Tests** | **27 / 27 PASSED** | **100% pass rate across all 6 test suites** |
+| **Google OAuth 2.0 & Session Lifecycle (`googleAuth.test.ts`)** | **8 / 8 PASSED** | Unconfigured 503 handling, CSRF state cookie, code-for-token exchange, ID token verification, session restoration, logout, 401 unauthenticated protection, and user data isolation |
+| **Slack OAuth v2 & Rate-Limit Alerts (`slackOAuth.test.ts`)** | **9 / 9 PASSED** | State validation, cancelled consent, code exchange, token encryption at rest, API isolation, disconnect, notification dispatch, Redis deduplication cooldown, revoked token handling |
+| **Total Automated Tests** | **44 / 44 PASSED** | **100% pass rate across all 8 test suites** |
 | **TypeScript Compilation (`npm run type-check`)** | **PASSED** | 0 type errors across backend and frontend |
 | **Production Build (`npm run build:all`)** | **PASSED** | Backend (`tsc`) and frontend (`vite build`) production bundles built cleanly |

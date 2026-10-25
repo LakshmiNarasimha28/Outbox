@@ -53,6 +53,8 @@ export class EmailController {
       scheduled_at: scheduledDate,
       idempotency_key: data.idempotencyKey,
       max_attempts: data.maxAttempts ?? 3,
+      user_id: req.user?.id || null,
+      user_email: req.user?.email || null,
     });
 
     // 2. Synchronize to Elasticsearch search index (non-blocking safeguard: does not fail schedule on ES error)
@@ -92,7 +94,7 @@ export class EmailController {
       res.status(400).json({ success: false, error: 'Email ID parameter is required' });
       return;
     }
-    const email = await EmailJobRepository.findById(id);
+    const email = await EmailJobRepository.findById(id, req.user?.id);
     if (!email) {
       res.status(404).json({
         success: false,
@@ -109,7 +111,7 @@ export class EmailController {
   }
 
   /**
-   * Lists emails with status filter and pagination.
+   * Lists emails with status filter, user scope, and pagination.
    */
   public static async listEmails(req: Request, res: Response): Promise<void> {
     const queryResult = listEmailsQuerySchema.safeParse(req.query);
@@ -128,6 +130,7 @@ export class EmailController {
       recipient,
       limit,
       offset,
+      userId: req.user?.id,
     });
 
     res.status(200).json({
@@ -141,13 +144,13 @@ export class EmailController {
   }
 
   /**
-   * Lists scheduled emails that are currently PENDING or PROCESSING.
+   * Lists scheduled emails that are currently PENDING or PROCESSING, scoped by user.
    */
   public static async listScheduledEmails(req: Request, res: Response): Promise<void> {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
-    const { total, emails } = await EmailJobRepository.findScheduled(limit, offset);
+    const { total, emails } = await EmailJobRepository.findScheduled(limit, offset, req.user?.id);
 
     res.status(200).json({
       success: true,
@@ -160,13 +163,13 @@ export class EmailController {
   }
 
   /**
-   * Lists completed emails that are either SENT or FAILED.
+   * Lists completed emails that are either SENT or FAILED, scoped by user.
    */
   public static async listEmailHistory(req: Request, res: Response): Promise<void> {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
     const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
-    const { total, emails } = await EmailJobRepository.findHistory(limit, offset);
+    const { total, emails } = await EmailJobRepository.findHistory(limit, offset, req.user?.id);
 
     res.status(200).json({
       success: true,

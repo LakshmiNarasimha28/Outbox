@@ -108,5 +108,44 @@ export interface HealthResponse {
     database: ServiceStatus;
     redis: ServiceStatus;
     elasticsearch?: ServiceStatus;
+    googleAuth?: {
+      configured: boolean;
+      callbackUrl: string;
+    };
+    slack?: {
+      configured: boolean;
+      callbackUrl: string;
+      cooldownSeconds: number;
+    };
   };
+}
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  avatar: string | null;
+}
+
+export interface AuthMeResponse {
+  success: boolean;
+  authenticated: boolean;
+  user: AuthUser | null;
+}
+
+export interface SlackIntegrationInfo {
+  teamId: string;
+  teamName: string;
+  channelId: string | null;
+  channelName: string | null;
+  sender: string;
+  status: 'ACTIVE' | 'REVOKED' | 'DISCONNECTED';
+  connectedAt: string;
+}
+
+export interface SlackStatusResponse {
+  success: boolean;
+  configured: boolean;
+  connected: boolean;
+  integration: SlackIntegrationInfo | null;
 }

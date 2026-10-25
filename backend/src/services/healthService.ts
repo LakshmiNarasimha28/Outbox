@@ -1,6 +1,7 @@
 import { checkDatabaseConnection, DatabaseHealthStatus } from '../database/mysql';
 import { checkRedisConnection, RedisHealthStatus } from '../queue/redis';
 import { ElasticsearchService, ElasticsearchHealthStatus } from './elasticsearchService';
+import { AuthService } from './authService';
 import { env } from '../config/env';
 
 export interface HealthReport {
@@ -18,6 +19,15 @@ export interface HealthReport {
     database: DatabaseHealthStatus;
     redis: RedisHealthStatus;
     elasticsearch: ElasticsearchHealthStatus;
+    googleAuth: {
+      configured: boolean;
+      callbackUrl: string;
+    };
+    slack: {
+      configured: boolean;
+      callbackUrl: string;
+      cooldownSeconds: number;
+    };
   };
 }
 
@@ -47,6 +57,15 @@ export class HealthService {
         database: dbStatus,
         redis: redisStatus,
         elasticsearch: esStatus,
+        googleAuth: {
+          configured: AuthService.isConfigured(),
+          callbackUrl: env.GOOGLE_CALLBACK_URL,
+        },
+        slack: {
+          configured: Boolean(env.SLACK_CLIENT_ID && env.SLACK_CLIENT_SECRET),
+          callbackUrl: env.SLACK_CALLBACK_URL,
+          cooldownSeconds: env.SLACK_NOTIFICATION_COOLDOWN_SECONDS,
+        },
       },
     };
   }
