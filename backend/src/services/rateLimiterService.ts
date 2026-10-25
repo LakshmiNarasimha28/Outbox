@@ -87,11 +87,36 @@ export class RateLimiterService {
   }
 
   /**
+   * Persists a custom hourly limit for a sender in Redis.
+   */
+  public static async setSenderLimit(sender: string, limit: number): Promise<void> {
+    const client = getSharedRedisClient();
+    if (!client) return;
+    const normalized = sender.trim().toLowerCase();
+    await client.set(`ratelimit:config:${encodeURIComponent(normalized)}`, limit.toString(), 'EX', 86400);
+  }
+
+  /**
+   * Retrieves the configured hourly limit for a sender from Redis if present.
+   */
+  public static async getSenderLimit(sender: string): Promise<number | null> {
+    const client = getSharedRedisClient();
+    if (!client) return null;
+    const normalized = sender.trim().toLowerCase();
+    try {
+      const val = await client.get(`ratelimit:config:${encodeURIComponent(normalized)}`);
+      return val ? parseInt(val, 10) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Atomically checks quota and records a send if under the limit.
    * Throws RateLimiterError if Redis fails or is unavailable to prevent silent bypasses.
    *
    * @param sender Email sender address
-   * @param customLimit Optional limit override (defaults to env.HOURLY_RATE_LIMIT)
+   * @param customLimit Optional limit override (defaults to sender limit or env.HOURLY_RATE_LIMIT)
    * @param customWindowMs Optional window duration override (defaults to env.RATE_LIMIT_WINDOW_MS)
    */
   public static async checkAndConsume(
@@ -106,7 +131,12 @@ export class RateLimiterService {
       );
     }
 
-    const limit = customLimit ?? env.HOURLY_RATE_LIMIT;
+    let limit = customLimit;
+    if (limit === undefined) {
+      const configured = await this.getSenderLimit(sender);
+      limit = configured !== null ? configured : env.HOURLY_RATE_LIMIT;
+    }
+
     const windowMs = customWindowMs ?? env.RATE_LIMIT_WINDOW_MS;
     const key = this.getKey(sender);
     const nowMs = Date.now();

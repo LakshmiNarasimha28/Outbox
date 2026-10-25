@@ -56,6 +56,65 @@ export class EmailJobRepository {
   }
 
   /**
+   * Persists a batch of email jobs in MySQL.
+   * Handles partial failures so that one faulty lead does not abort the entire batch.
+   * Gracefully returns created, existing (idempotent hits), and failed records.
+   */
+  public static async createMany(
+    inputs: CreateEmailJobInput[]
+  ): Promise<{
+    created: EmailJobRecord[];
+    existing: EmailJobRecord[];
+    failed: { recipient: string; error: string }[];
+  }> {
+    const created: EmailJobRecord[] = [];
+    const existing: EmailJobRecord[] = [];
+    const failed: { recipient: string; error: string }[] = [];
+
+    for (const input of inputs) {
+      try {
+        const generatedId = input.id || crypto.randomUUID();
+        const record = await this.create({ ...input, id: generatedId });
+        if (record.id !== generatedId) {
+          existing.push(record);
+        } else {
+          created.push(record);
+        }
+      } catch (err: any) {
+        failed.push({
+          recipient: input.recipient,
+          error: err?.message || 'Database insert failed',
+        });
+      }
+    }
+
+    return { created, existing, failed };
+  }
+
+  /**
+   * Updates error message on an email job without changing its PENDING status.
+   */
+  public static async updateErrorMessage(id: string, errorMessage: string): Promise<void> {
+    const pool = getDatabasePool();
+    await pool.query('UPDATE email_jobs SET error_message = ? WHERE id = ?', [errorMessage, id]);
+  }
+
+  /**
+   * Retrieves pending email jobs for queue recovery.
+   */
+  public static async findPendingUnqueued(limit = 100): Promise<EmailJobRecord[]> {
+    const pool = getDatabasePool();
+    const query = `
+      SELECT * FROM email_jobs
+      WHERE status = 'PENDING'
+      ORDER BY scheduled_at ASC
+      LIMIT ?
+    `;
+    const [rows] = await pool.query<EmailJobRow[]>(query, [limit]);
+    return rows;
+  }
+
+  /**
    * Finds an email job by primary key ID, optionally verifying user ownership.
    */
   public static async findById(id: string, userId?: string): Promise<EmailJobRecord | null> {

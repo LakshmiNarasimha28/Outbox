@@ -1,12 +1,197 @@
 import { Request, Response } from 'express';
-import { scheduleEmailSchema, listEmailsQuerySchema, searchEmailQuerySchema } from '../validation/emailSchemas';
+import {
+  scheduleEmailSchema,
+  listEmailsQuerySchema,
+  searchEmailQuerySchema,
+  parseLeadsSchema,
+  scheduleBatchSchema,
+} from '../validation/emailSchemas';
 import { EmailJobRepository } from '../database/repositories/emailJobRepository';
-import { scheduleEmailJob } from '../queue/emailQueue';
+import { scheduleEmailJob, scheduleEmailJobs } from '../queue/emailQueue';
 import { RateLimiterService } from '../services/rateLimiterService';
 import { ElasticsearchService } from '../services/elasticsearchService';
+import { parseLeads } from '../utils/leadParser';
 import { env } from '../config/env';
 
 export class EmailController {
+  /**
+   * Parses uploaded CSV or plain-text content into detected valid leads, duplicates, and invalid entries.
+   */
+  public static async parseLeads(req: Request, res: Response): Promise<void> {
+    const parseResult = parseLeadsSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Validation Error',
+        details: parseResult.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        })),
+      });
+      return;
+    }
+
+    const result = parseLeads(parseResult.data.content);
+    res.status(200).json({
+      success: true,
+      ...result,
+    });
+  }
+
+  /**
+   * Schedules a batch of emails with configurable start time, configurable delay between emails,
+   * per-lead idempotency, and distributed rate limiting.
+   */
+  /**
+   * Schedules a batch of emails with configurable start time, configurable delay between emails,
+   * per-lead idempotency, and distributed rate limiting.
+   */
+  public static async scheduleBatch(req: Request, res: Response): Promise<void> {
+    const parseResult = scheduleBatchSchema.safeParse(req.body);
+    if (!parseResult.success) {
+      res.status(400).json({
+        success: false,
+        error: 'Validation Error',
+        details: parseResult.error.issues.map((issue) => ({
+          field: issue.path.join('.'),
+          message: issue.message,
+        })),
+      });
+      return;
+    }
+
+    const data = parseResult.data;
+    const baseDate = data.startTime ? new Date(data.startTime) : new Date();
+    const delayStepMs = data.delayBetweenEmailsSeconds * 1000;
+    const batchKey = data.batchIdempotencyKey || crypto.randomUUID();
+
+    // Deduplicate recipients within the batch upfront
+    const seenRecipients = new Set<string>();
+    const uniqueRecipients: string[] = [];
+    for (const r of data.recipients) {
+      const norm = r.trim().toLowerCase();
+      if (!seenRecipients.has(norm)) {
+        seenRecipients.add(norm);
+        uniqueRecipients.push(norm);
+      }
+    }
+
+    // Cache sender limit in Redis if provided
+    if (data.hourlyRateLimit && data.sender) {
+      await RateLimiterService.setSenderLimit(data.sender, data.hourlyRateLimit);
+    }
+
+    // Build creation inputs for all unique recipients
+    const inputs = uniqueRecipients.map((recipient, index) => {
+      const scheduledDate = new Date(baseDate.getTime() + index * delayStepMs);
+      const idempotencyKey = `${batchKey}-${recipient}`;
+
+      return {
+        recipient,
+        subject: data.subject,
+        body: data.body,
+        sender: data.sender || env.DEFAULT_SENDER,
+        scheduled_at: scheduledDate,
+        idempotency_key: idempotencyKey,
+        max_attempts: data.maxAttempts ?? 3,
+        user_id: req.user?.id || null,
+        user_email: req.user?.email || null,
+      };
+    });
+
+    // 1. Batch persist in MySQL with partial failure resilience
+    const { created, existing, failed } = await EmailJobRepository.createMany(inputs);
+
+    // 2. Synchronize newly created records to Elasticsearch search index (non-blocking)
+    for (const record of created) {
+      ElasticsearchService.indexEmail(record).catch(() => {});
+    }
+
+    // 3. Batch enqueue BullMQ delayed jobs
+    // Enqueue newly created records + any existing records still in PENDING status (safe recovery on retry)
+    const pendingToEnqueue = [
+      ...created,
+      ...existing.filter((e) => e.status === 'PENDING'),
+    ];
+
+    let jobIds: string[] = [];
+    if (pendingToEnqueue.length > 0) {
+      try {
+        jobIds = await scheduleEmailJobs(pendingToEnqueue, {
+          hourlyRateLimit: data.hourlyRateLimit,
+        });
+      } catch (queueErr) {
+        const errMsg = queueErr instanceof Error ? queueErr.message : 'Failed to enqueue BullMQ batch';
+        // Preserve records as PENDING in MySQL so they can be retried/recovered without duplicate emails
+        for (const record of created) {
+          await EmailJobRepository.updateErrorMessage(record.id, `Pending Queue Dispatch: ${errMsg}`);
+        }
+        res.status(503).json({
+          success: false,
+          error: 'Queue Dispatch Unavailable',
+          message: 'Batch emails were persisted to database, but could not be enqueued in Redis. Records remain PENDING and can be retried or recovered without duplicate emails.',
+          persistedCount: created.length,
+          failedCount: failed.length,
+        });
+        return;
+      }
+    }
+
+    const allRecords = [...created, ...existing];
+    const firstScheduledAt = inputs.length > 0 ? inputs[0].scheduled_at : baseDate;
+    const lastScheduledAt =
+      inputs.length > 0 ? inputs[inputs.length - 1].scheduled_at : baseDate;
+
+    res.status(201).json({
+      success: true,
+      message: `Batch schedule created: ${created.length} new jobs enqueued${existing.length > 0 ? `, ${existing.length} duplicate idempotency jobs skipped/reconciled` : ''}${failed.length > 0 ? `, ${failed.length} failed inserts` : ''}`,
+      totalRequested: data.recipients.length,
+      uniqueRecipientsCount: uniqueRecipients.length,
+      scheduledCount: created.length,
+      idempotentCount: existing.length,
+      failedCount: failed.length,
+      failedLeads: failed,
+      delayBetweenEmailsSeconds: data.delayBetweenEmailsSeconds,
+      hourlyRateLimit: data.hourlyRateLimit || env.HOURLY_RATE_LIMIT,
+      firstScheduledAt: firstScheduledAt.toISOString(),
+      lastScheduledAt: lastScheduledAt.toISOString(),
+      jobIds,
+      emails: allRecords,
+    });
+  }
+
+  /**
+   * Recovers any PENDING jobs from MySQL and enqueues them in BullMQ idempotently.
+   */
+  public static async recoverPendingJobs(req: Request, res: Response): Promise<void> {
+    const pending = await EmailJobRepository.findPendingUnqueued(200);
+    if (pending.length === 0) {
+      res.status(200).json({
+        success: true,
+        message: 'No pending unqueued jobs found to recover',
+        recoveredCount: 0,
+        jobIds: [],
+      });
+      return;
+    }
+
+    try {
+      const jobIds = await scheduleEmailJobs(pending);
+      res.status(200).json({
+        success: true,
+        message: `Successfully recovered and enqueued ${pending.length} pending email jobs`,
+        recoveredCount: pending.length,
+        jobIds,
+      });
+    } catch (err) {
+      res.status(500).json({
+        success: false,
+        error: 'Recovery Dispatch Error',
+        message: err instanceof Error ? err.message : 'Failed to recover pending jobs in Redis',
+      });
+    }
+  }
+
   /**
    * Schedules an email. Validates input, persists to MySQL, and enqueues in BullMQ with delay.
    * Handles idempotency keys to prevent duplicate schedules.

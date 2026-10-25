@@ -170,3 +170,40 @@ export interface QueueTelemetryResponse {
   dashboardUrl: string;
   error?: string;
 }
+
+export interface ParseLeadsResponse {
+  success: boolean;
+  totalDetected: number;
+  validLeads: string[];
+  duplicatesRemoved: number;
+  duplicateSamples: string[];
+  invalidCount: number;
+  invalidSamples: string[];
+  isEmpty: boolean;
+}
+
+export interface ScheduleBatchPayload {
+  recipients: string[];
+  subject: string;
+  body: string;
+  sender?: string;
+  startTime?: string;
+  delayBetweenEmailsSeconds?: number;
+  hourlyRateLimit?: number;
+  batchIdempotencyKey?: string;
+}
+
+export interface ScheduleBatchResponse {
+  success: boolean;
+  message: string;
+  totalRequested: number;
+  scheduledCount: number;
+  idempotentCount: number;
+  delayBetweenEmailsSeconds: number;
+  firstScheduledAt: string;
+  lastScheduledAt: string;
+  jobIds: string[];
+  emails: EmailJobRecord[];
+  error?: string;
+  details?: { field: string; message: string }[];
+}

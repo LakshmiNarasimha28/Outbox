@@ -72,7 +72,10 @@ export function initEmailWorker(): Worker<EmailJobData> | null {
 
       // 2. Distributed Hourly Rate-Limiting Check (Redis-backed atomic sliding window)
       // Throws RateLimiterError if Redis is unavailable to avoid silently bypassing the limit.
-      const rateLimit = await RateLimiterService.checkAndConsume(record.sender);
+      const rateLimit = await RateLimiterService.checkAndConsume(
+        record.sender,
+        job.data.hourlyRateLimit
+      );
       if (!rateLimit.allowed) {
         const nextEligibleTime = Date.now() + Math.max(rateLimit.retryAfterMs, 1000);
         const nextDate = new Date(nextEligibleTime);

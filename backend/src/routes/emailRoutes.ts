@@ -15,6 +15,27 @@ router.use(requireAuth);
 router.post('/schedule', EmailController.scheduleEmail);
 
 /**
+ * @route   POST /api/emails/parse-leads
+ * @desc    Parse and validate CSV or plain-text leads with duplicate detection
+ * @access  Public
+ */
+router.post('/parse-leads', EmailController.parseLeads);
+
+/**
+ * @route   POST /api/emails/schedule-batch
+ * @desc    Schedule a batch of emails with staggered delays, persistence, and rate limiting
+ * @access  Public
+ */
+router.post('/schedule-batch', EmailController.scheduleBatch);
+
+/**
+ * @route   POST /api/emails/recover-pending
+ * @desc    Idempotently recover and enqueue PENDING email jobs from MySQL to BullMQ
+ * @access  Public
+ */
+router.post('/recover-pending', EmailController.recoverPendingJobs);
+
+/**
  * @route   GET /api/emails/scheduled
  * @desc    List pending and currently processing scheduled emails
  * @access  Public

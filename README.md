@@ -634,6 +634,8 @@ The Outbox Scheduler includes a live, production-grade BullMQ queue monitoring d
 | **Google OAuth 2.0 & Session Lifecycle (`googleAuth.test.ts`)** | **8 / 8 PASSED** | Unconfigured 503 handling, CSRF state cookie, code-for-token exchange, ID token verification, session restoration, logout, 401 unauthenticated protection, and user data isolation |
 | **Slack OAuth v2 & Rate-Limit Alerts (`slackOAuth.test.ts`)** | **10 / 10 PASSED** | State validation, cancelled consent, code exchange, token encryption at rest, API isolation, disconnect, notification dispatch, Redis deduplication cooldown, revoked token handling, 404 webhook fallback to chat.postMessage |
 | **Live BullMQ Dashboard & Telemetry (`bullBoard.test.ts`)** | **8 / 8 PASSED** | Unauthenticated 401/302 protection, authenticated dashboard access, existing queue reuse, live telemetry counts, scheduled job tracking, and graceful 503 degradation |
-| **Total Automated Tests** | **53 / 53 PASSED** | **100% pass rate across all 10 test suites** |
+| **Lead Parser Utility (`leadParser.test.ts`)** | **7 / 7 PASSED** | RFC email validation, empty/whitespace handling, CSV headers, headless/quoted CSV, mixed plain-text delimiters, case-insensitive deduplication, invalid address detection |
+| **Batch Lead Scheduling API (`batchScheduling.test.ts`)** | **9 / 9 PASSED** | CSV & plain-text parsing endpoint, 400 validation, staggered delays calculation, MySQL batch persistence, BullMQ addBulk queueing, per-lead idempotency deduplication, duplicate recipient handling, custom rate limits, and idempotent recovery |
+| **Total Automated Tests** | **69 / 69 PASSED** | **100% pass rate across all 12 test suites** |
 | **TypeScript Compilation (`npm run type-check`)** | **PASSED** | 0 type errors across backend (`tsc --noEmit`) and frontend (`tsc -b && vite build`) |
 | **Production Build (`npm run build:all`)** | **PASSED** | Backend (`tsc`) and frontend (`vite build`) production bundles built cleanly |

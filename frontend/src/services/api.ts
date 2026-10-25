@@ -9,6 +9,9 @@ import type {
   AuthMeResponse,
   SlackStatusResponse,
   QueueTelemetryResponse,
+  ParseLeadsResponse,
+  ScheduleBatchPayload,
+  ScheduleBatchResponse,
 } from '../types/email';
 
 const API_BASE = '/api';
@@ -63,6 +66,26 @@ export const api = {
    */
   async scheduleEmail(payload: ScheduleEmailPayload): Promise<ScheduleEmailResponse> {
     return request<ScheduleEmailResponse>('/api/emails/schedule', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  /**
+   * Parse CSV or plain-text file content for lead detection and duplicate handling.
+   */
+  async parseLeads(content: string): Promise<ParseLeadsResponse> {
+    return request<ParseLeadsResponse>('/api/emails/parse-leads', {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    });
+  },
+
+  /**
+   * Schedule a batch of leads with staggered delays, persistence, and rate limiting.
+   */
+  async scheduleBatch(payload: ScheduleBatchPayload): Promise<ScheduleBatchResponse> {
+    return request<ScheduleBatchResponse>('/api/emails/schedule-batch', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
