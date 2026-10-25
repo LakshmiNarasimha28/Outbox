@@ -16,7 +16,8 @@ export const SlackIntegrationCard: React.FC<SlackIntegrationCardProps> = ({
   const [actionLoading, setActionLoading] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const isConnected = Boolean(slackStatus?.connected && slackStatus?.integration);
+  const isConnected = Boolean(slackStatus?.connected && slackStatus?.integration?.status === 'ACTIVE');
+  const isRevoked = Boolean(slackStatus?.isRevoked || slackStatus?.integration?.status === 'REVOKED');
   const isConfigured = Boolean(slackStatus?.configured);
   const integration = slackStatus?.integration;
 
@@ -85,6 +86,10 @@ export const SlackIntegrationCard: React.FC<SlackIntegrationCardProps> = ({
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                   CONNECTED
                 </span>
+              ) : isRevoked ? (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                  REVOKED
+                </span>
               ) : (
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700">
                   DISCONNECTED
@@ -115,6 +120,29 @@ export const SlackIntegrationCard: React.FC<SlackIntegrationCardProps> = ({
           <span>Refresh</span>
         </button>
       </div>
+
+      {/* Revoked Warning Banner */}
+      {isRevoked && (
+        <div className="p-3.5 rounded-xl border border-rose-500/30 bg-rose-950/30 text-rose-300 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-lg">
+          <div className="flex items-center space-x-2.5">
+            <span className="text-base shrink-0">⚠️</span>
+            <div>
+              <p className="font-semibold text-rose-200">Slack Integration Credentials Revoked</p>
+              <p className="text-[11px] text-rose-300/80 mt-0.5">
+                {slackStatus?.message ||
+                  'The Slack incoming webhook URL or access token was revoked or returned HTTP 404. Reconnection is required to restore alerts.'}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleConnect}
+            disabled={actionLoading}
+            className="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-[#4A154B] hover:bg-[#5C1D5E] text-white transition flex-shrink-0 shadow-md cursor-pointer active:scale-95 self-start sm:self-auto"
+          >
+            Reconnect Workspace
+          </button>
+        </div>
+      )}
 
       {/* Feedback Banner */}
       {feedback && (

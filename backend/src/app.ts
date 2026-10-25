@@ -5,6 +5,7 @@ import { env } from './config/env';
 import { apiRouter } from './routes';
 import { healthRoutes } from './routes/healthRoutes';
 import { authenticateSession } from './middleware/authMiddleware';
+import { setupBullBoard } from './queue/bullBoard';
 
 export function createApp(): Express {
   const app = express();
@@ -42,6 +43,9 @@ export function createApp(): Express {
   // Health route directly at root level as well as /api
   app.use('/health', healthRoutes);
   app.use('/api', apiRouter);
+
+  // Bull Board Live Queue Dashboard
+  setupBullBoard(app);
 
   // Fallback 404 handler
   app.use((req: Request, res: Response) => {

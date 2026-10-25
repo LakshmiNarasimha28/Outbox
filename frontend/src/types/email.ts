@@ -147,5 +147,26 @@ export interface SlackStatusResponse {
   success: boolean;
   configured: boolean;
   connected: boolean;
+  isRevoked?: boolean;
+  message?: string;
   integration: SlackIntegrationInfo | null;
+}
+
+export interface QueueCounts {
+  waiting: number;
+  active: number;
+  completed: number;
+  failed: number;
+  delayed: number;
+  paused: number;
+}
+
+export interface QueueTelemetryResponse {
+  success: boolean;
+  available: boolean;
+  queueName: string;
+  counts: QueueCounts;
+  isPaused: boolean;
+  dashboardUrl: string;
+  error?: string;
 }

@@ -17,6 +17,8 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@bull-board/api": "^9.10.5",
+    "@bull-board/express": "^9.10.5",
     "@elastic/elasticsearch": "^9.5.1",
     "bullmq": "^5.41.0",
     "cookie-parser": "^1.4.7",

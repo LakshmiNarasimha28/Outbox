@@ -115,6 +115,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('queue')}
+              className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 ${
+                activeTab === 'queue'
+                  ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/40'
+              }`}
+            >
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+              </svg>
+              <span>Queue Monitor</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('health')}
               className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 ${
                 activeTab === 'health'
@@ -258,6 +272,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             Slack Alerts
+          </button>
+          <button
+            onClick={() => setActiveTab('queue')}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap ${
+              activeTab === 'queue' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Queue Monitor
           </button>
           <button
             onClick={() => setActiveTab('health')}

@@ -118,11 +118,26 @@ export class SlackController {
       const integration = await SlackRepository.findByUserId(userId);
 
       if (!integration || integration.status !== 'ACTIVE') {
+        const isRevoked = integration?.status === 'REVOKED';
         res.json({
           success: true,
           configured,
           connected: false,
-          integration: null,
+          isRevoked,
+          message: isRevoked
+            ? 'Slack integration credentials or webhook URL were revoked or returned HTTP 404. Please reconnect your Slack workspace.'
+            : undefined,
+          integration: isRevoked && integration
+            ? {
+                teamId: integration.team_id,
+                teamName: integration.team_name,
+                channelId: integration.channel_id,
+                channelName: integration.channel_name,
+                sender: integration.sender,
+                status: integration.status,
+                connectedAt: integration.updated_at,
+              }
+            : null,
         });
         return;
       }
@@ -131,6 +146,7 @@ export class SlackController {
         success: true,
         configured,
         connected: true,
+        isRevoked: false,
         integration: {
           teamId: integration.team_id,
           teamName: integration.team_name,

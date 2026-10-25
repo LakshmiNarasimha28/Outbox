@@ -33,6 +33,9 @@ export function getEmailQueue(): Queue<EmailJobData> | null {
     };
 
     emailQueue = new Queue<EmailJobData>(EMAIL_QUEUE_NAME, queueOptions);
+    emailQueue.on('error', (err) => {
+      console.warn(`[BullMQ Queue Notice] ${err.message}`);
+    });
   }
   return emailQueue;
 }
@@ -79,7 +82,16 @@ export async function scheduleEmailJob(record: EmailJobRecord): Promise<string> 
 
 export async function closeEmailQueue(): Promise<void> {
   if (emailQueue) {
-    await emailQueue.close();
+    try {
+      await emailQueue.waitUntilReady();
+    } catch {
+      // Ignore if queue was not connected or failed to connect
+    }
+    try {
+      await emailQueue.close();
+    } catch (err: any) {
+      console.warn(`[BullMQ Notice] Queue close: ${err?.message}`);
+    }
     emailQueue = null;
   }
 }

@@ -7,9 +7,10 @@ import { ScheduledJobsTab } from './components/ScheduledJobsTab';
 import { DeliveryHistoryTab } from './components/DeliveryHistoryTab';
 import { SystemHealthTab } from './components/SystemHealthTab';
 import { SlackIntegrationCard } from './components/SlackIntegrationCard';
+import { QueueMonitoringTab } from './components/QueueMonitoringTab';
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'schedule' | 'scheduled' | 'history' | 'alerts' | 'health'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'scheduled' | 'history' | 'alerts' | 'health' | 'queue'>('schedule');
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthLoading, setHealthLoading] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
@@ -255,6 +256,10 @@ export default function App() {
                   onRefresh={fetchSlackStatus}
                 />
               </div>
+            )}
+
+            {activeTab === 'queue' && (
+              <QueueMonitoringTab onScheduleNewClick={() => setActiveTab('schedule')} />
             )}
           </>
         )}

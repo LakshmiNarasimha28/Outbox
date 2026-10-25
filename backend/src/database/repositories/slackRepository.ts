@@ -7,6 +7,7 @@ import {
   SlackIntegrationStatus,
 } from '../models/slackIntegration';
 import { EncryptionService } from '../../services/encryptionService';
+import { env } from '../../config/env';
 
 export interface DecryptedSlackCredentials {
   accessToken: string | null;
@@ -90,15 +91,28 @@ export class SlackRepository {
   }
 
   /**
-   * Finds the active Slack integration for a given sender email address.
+   * Finds the active Slack integration for a given sender email address or user ID.
+   * Strictly enforces user isolation: never matches an unrelated user's integration.
    */
   public static async findActiveBySender(
-    sender: string
+    sender: string,
+    userId?: string | null
   ): Promise<SlackIntegrationRecord | null> {
     const pool = getDatabasePool();
     const normalized = sender.trim().toLowerCase();
 
-    // 1. Try matching by exact sender
+    // 1. Try matching by specific authenticated user ID if provided
+    if (userId) {
+      const [userRows] = await pool.execute<RowDataPacket[]>(
+        `SELECT * FROM slack_integrations WHERE user_id = ? AND status = 'ACTIVE' LIMIT 1`,
+        [userId]
+      );
+      if (userRows.length > 0) {
+        return userRows[0] as SlackIntegrationRecord;
+      }
+    }
+
+    // 2. Try matching by exact sender
     const [senderRows] = await pool.execute<RowDataPacket[]>(
       `SELECT * FROM slack_integrations WHERE sender = ? AND status = 'ACTIVE' LIMIT 1`,
       [normalized]
@@ -108,7 +122,7 @@ export class SlackRepository {
       return senderRows[0] as SlackIntegrationRecord;
     }
 
-    // 2. Try matching by user_email
+    // 3. Try matching by user_email
     const [emailRows] = await pool.execute<RowDataPacket[]>(
       `SELECT * FROM slack_integrations WHERE user_email = ? AND status = 'ACTIVE' LIMIT 1`,
       [normalized]
@@ -118,16 +132,30 @@ export class SlackRepository {
       return emailRows[0] as SlackIntegrationRecord;
     }
 
-    // 3. Fallback to any active integration in system (e.g. workspace-wide webhook)
-    const [anyActiveRows] = await pool.execute<RowDataPacket[]>(
-      `SELECT * FROM slack_integrations WHERE status = 'ACTIVE' ORDER BY updated_at DESC LIMIT 1`
-    );
-
-    if (anyActiveRows.length > 0) {
-      return anyActiveRows[0] as SlackIntegrationRecord;
+    // 4. Default sender match for system / unauthenticated default sender jobs
+    if (normalized === env.DEFAULT_SENDER.toLowerCase()) {
+      const [defaultRows] = await pool.execute<RowDataPacket[]>(
+        `SELECT * FROM slack_integrations WHERE (user_id = 'legacy-system-user' OR sender = ?) AND status = 'ACTIVE' LIMIT 1`,
+        [normalized]
+      );
+      if (defaultRows.length > 0) {
+        return defaultRows[0] as SlackIntegrationRecord;
+      }
     }
 
     return null;
+  }
+
+  /**
+   * Deletes integration records for specified user IDs (used for test teardown).
+   */
+  public static async deleteByUserId(userId: string): Promise<boolean> {
+    const pool = getDatabasePool();
+    const [result] = await pool.execute<ResultSetHeader>(
+      `DELETE FROM slack_integrations WHERE user_id = ?`,
+      [userId]
+    );
+    return result.affectedRows > 0;
   }
 
   /**

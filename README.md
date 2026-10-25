@@ -2,7 +2,7 @@
 
 > **Hiring Assignment Submission**
 > **Deadline:** October 25, 2026, 12:00 PM IST
-> **Current Status:** Phase 4 Complete (Google OAuth 2.0 + Distributed Rate Limiting + Elasticsearch Integration Operational)
+> **Current Status:** Phase 5 Complete (Live BullMQ Dashboard + Google OAuth 2.0 + Slack OAuth + Distributed Rate Limiting + Elasticsearch Integration Operational)
 
 ---
 
@@ -13,9 +13,11 @@ The **Outbox Labs Email Job Scheduler** is a distributed background job scheduli
 ### Core Tech Stack
 - **Backend:** Node.js 24 + Express.js + TypeScript
 - **Authentication:** Google OAuth 2.0 + OpenID Connect (`google-auth-library` + HttpOnly JWT Sessions)
-- **Queue & Storage:** BullMQ + ioredis (Hosted Upstash Redis) + MySQL 8 (mysql2)
+- **Queue & Monitoring:** BullMQ + ioredis (Hosted Upstash Redis) + Bull Board (`@bull-board/api` & `@bull-board/express`)
+- **Database:** MySQL 8 (mysql2 connection pool)
 - **Search & Indexing:** Elasticsearch 8/9 (`@elastic/elasticsearch`)
 - **Email Delivery:** Nodemailer + Ethereal SMTP
+- **Alerts & Integrations:** Slack OAuth v2 (`incoming-webhook` + `chat:write`)
 - **Validation & Environment:** Zod + dotenv
 - **Frontend:** React 19 + TypeScript + Vite + Tailwind CSS v4
 - **Core Principle:** Distributed queue-based worker model; **no cron jobs or cron libraries** are used. MySQL is the authoritative single source of truth.
@@ -590,11 +592,39 @@ The application implements real Slack OAuth v2 integration to automatically noti
 
 ---
 
-## 12. Verification Results
+## 12. Live BullMQ Monitoring Dashboard (Bull Board)
+
+The Outbox Scheduler includes a live, production-grade BullMQ queue monitoring dashboard powered by `@bull-board/api` and `@bull-board/express`, embedded directly within the dark-themed UI and accessible as a standalone interface.
+
+### Key Capabilities
+- **Job Observability:** Real-time visibility into `waiting`, `active`, `delayed`, `completed`, and `failed` jobs in the `email-jobs` queue.
+- **Job Details & Failure Reasons:** Inspect job IDs, timestamps, attempt counts, stack traces, and failure error messages.
+- **Live Telemetry KPI Cards:** High-level dashboard counters refreshing automatically every 10 seconds.
+- **Embedded & Pop-Out Views:** Embedded Bull Board UI inside the React dashboard with one-click direct access to `/admin/queues`.
+
+### Architecture & Security Guarantees
+1. **Existing Queue & Redis Reuse:**
+   - Mounts Bull Board directly onto the existing BullMQ queue (`email-jobs`) and shared hosted Redis connection via `getEmailQueue()`.
+   - **No secondary queues or duplicate processing pipelines are created.**
+2. **Access Control & Session Protection:**
+   - Mounted at `/admin/queues` and strictly protected by `requireQueueAuth` middleware.
+   - When authentication is active (`AUTH_ENFORCED=true` or Google OAuth configured), unauthenticated browser requests are redirected to `/?auth_error=...` with an informative sign-in notice; API requests receive standard `401 Unauthorized`.
+3. **Zero Secret Exposure:**
+   - BullMQ delayed job payloads contain **strictly operational pointers**: `{ emailId, recipient, subject, sender }`.
+   - **Email bodies, SMTP passwords, OAuth tokens, and Redis credentials are never stored in BullMQ** and therefore never visible in Bull Board. Email bodies reside exclusively in MySQL.
+4. **Read-Only Protection:**
+   - Initialized with `{ readOnlyMode: true, allowRetries: true }`.
+   - Destructive queue actions (such as queue obliteration or bulk purging) are disabled to protect in-flight email deliveries, while safe retries of failed jobs are permitted for operators.
+5. **Graceful Redis Degradation:**
+   - If Redis becomes unreachable, `/admin/queues` returns a styled, user-friendly `503 Service Unavailable` status page or JSON response without crashing Express.
+
+---
+
+## 13. Verification Results
 
 | Suite / Check | Result | Details |
 | :--- | :--- | :--- |
-| **Connection Verification (`verify:connections`)** | **ALL PASSED** | MySQL (42ms), Hosted Redis (162ms), Ethereal SMTP (3166ms), Elasticsearch Status, Google OAuth Probe, Slack OAuth Probe |
+| **Connection Verification (`verify:connections`)** | **ALL PASSED** | MySQL (88ms), Hosted Redis (199ms), Ethereal SMTP (3379ms), Elasticsearch Status, Google OAuth Probe, Slack OAuth Probe |
 | **Validation Unit Tests (`emailValidation.test.ts`)** | **6 / 6 PASSED** | Zod schemas for recipient, subject, body, dates, and query limits |
 | **API Integration Tests (`emailApi.test.ts`)** | **6 / 6 PASSED** | Scheduling, 400 validations, idempotency handling, paginated listing |
 | **End-to-End Worker Delivery (`emailEndToEndWorker.test.ts`)** | **1 / 1 PASSED** | Schedule -> BullMQ delay -> Worker pickup -> Ethereal delivery -> MySQL `SENT` status |
@@ -602,7 +632,8 @@ The application implements real Slack OAuth v2 integration to automatically noti
 | **Distributed Rate Limiting (`rateLimiter.test.ts`)** | **6 / 6 PASSED** | Atomic sliding window, sender isolation, refunding on failure, telemetry API, worker auto-reschedule, and explicit Redis error handling |
 | **Elasticsearch Integration & Search (`elasticsearch.test.ts`)** | **7 / 7 PASSED** | Document mapping, idempotent upsert, lifecycle sync (PROCESSING/SENT/FAILED), full-text search, date filters, bulk sync, and outage resilience |
 | **Google OAuth 2.0 & Session Lifecycle (`googleAuth.test.ts`)** | **8 / 8 PASSED** | Unconfigured 503 handling, CSRF state cookie, code-for-token exchange, ID token verification, session restoration, logout, 401 unauthenticated protection, and user data isolation |
-| **Slack OAuth v2 & Rate-Limit Alerts (`slackOAuth.test.ts`)** | **9 / 9 PASSED** | State validation, cancelled consent, code exchange, token encryption at rest, API isolation, disconnect, notification dispatch, Redis deduplication cooldown, revoked token handling |
-| **Total Automated Tests** | **44 / 44 PASSED** | **100% pass rate across all 8 test suites** |
-| **TypeScript Compilation (`npm run type-check`)** | **PASSED** | 0 type errors across backend and frontend |
+| **Slack OAuth v2 & Rate-Limit Alerts (`slackOAuth.test.ts`)** | **10 / 10 PASSED** | State validation, cancelled consent, code exchange, token encryption at rest, API isolation, disconnect, notification dispatch, Redis deduplication cooldown, revoked token handling, 404 webhook fallback to chat.postMessage |
+| **Live BullMQ Dashboard & Telemetry (`bullBoard.test.ts`)** | **8 / 8 PASSED** | Unauthenticated 401/302 protection, authenticated dashboard access, existing queue reuse, live telemetry counts, scheduled job tracking, and graceful 503 degradation |
+| **Total Automated Tests** | **53 / 53 PASSED** | **100% pass rate across all 10 test suites** |
+| **TypeScript Compilation (`npm run type-check`)** | **PASSED** | 0 type errors across backend (`tsc --noEmit`) and frontend (`tsc -b && vite build`) |
 | **Production Build (`npm run build:all`)** | **PASSED** | Backend (`tsc`) and frontend (`vite build`) production bundles built cleanly |

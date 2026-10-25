@@ -228,26 +228,10 @@ export class SlackService {
     const cooldownSeconds = env.SLACK_NOTIFICATION_COOLDOWN_SECONDS;
     const normalizedSender = params.sender.trim().toLowerCase();
 
-    // 1. Deduplication / Cooldown Check via Redis
-    if (redis) {
-      const cooldownKey = `slack:ratelimit:cooldown:${encodeURIComponent(normalizedSender)}`;
-      try {
-        const acquired = await redis.set(cooldownKey, '1', 'EX', cooldownSeconds, 'NX');
-        if (!acquired) {
-          console.log(
-            `[Slack] Rate limit alert for ${params.sender} suppressed by active cooldown (${cooldownSeconds}s).`
-          );
-          return { sent: false, reason: 'COOLDOWN_ACTIVE' };
-        }
-      } catch (err) {
-        console.warn('[Slack] Failed to verify cooldown in Redis, proceeding carefully:', err);
-      }
-    }
-
-    // 2. Find active Slack integration
+    // 1. Find active Slack integration
     let integration: SlackIntegrationRecord | null = null;
     try {
-      integration = await SlackRepository.findActiveBySender(params.sender);
+      integration = await SlackRepository.findActiveBySender(params.sender, params.userId);
     } catch (err) {
       console.warn('[Slack] Database query failed while searching for Slack integration:', err);
       return { sent: false, reason: 'DB_ERROR' };
@@ -258,8 +242,29 @@ export class SlackService {
       return { sent: false, reason: 'NO_ACTIVE_INTEGRATION' };
     }
 
+    // 2. Deduplication / Cooldown Check via Redis
+    let cooldownAcquired = false;
+    const cooldownKey = `slack:ratelimit:cooldown:${encodeURIComponent(normalizedSender)}`;
+    if (redis) {
+      try {
+        const acquired = await redis.set(cooldownKey, '1', 'EX', cooldownSeconds, 'NX');
+        if (!acquired) {
+          console.log(
+            `[Slack] Rate limit alert for ${params.sender} suppressed by active cooldown (${cooldownSeconds}s).`
+          );
+          return { sent: false, reason: 'COOLDOWN_ACTIVE' };
+        }
+        cooldownAcquired = true;
+      } catch (err) {
+        console.warn('[Slack] Failed to verify cooldown in Redis, proceeding carefully:', err);
+      }
+    }
+
     const { accessToken, webhookUrl } = SlackRepository.getDecryptedCredentials(integration);
     if (!accessToken && !webhookUrl) {
+      if (redis && cooldownAcquired) {
+        await redis.del(cooldownKey).catch(() => {});
+      }
       console.warn(`[Slack] Integration ${integration.id} exists but has no valid credentials.`);
       return { sent: false, reason: 'MISSING_CREDENTIALS' };
     }
@@ -274,17 +279,26 @@ export class SlackService {
     // 3. Dispatch Notification via Mock or Network
     try {
       if (this.mockTransport) {
+        let mockSuccess = false;
+        let webhookFailed = false;
+        let webhookStatus = 0;
+
         if (this.mockTransport.sendWebhook && webhookUrl) {
           const res = await this.mockTransport.sendWebhook(webhookUrl, payload);
-          if (!res.ok) {
-            if (res.status === 404 || res.status === 410) {
-              await SlackRepository.markRevoked(integration.id);
-            }
-            return { sent: false, reason: `MOCK_WEBHOOK_FAILED: ${res.status}` };
+          if (res.ok) {
+            mockSuccess = true;
+          } else {
+            webhookFailed = true;
+            webhookStatus = res.status;
           }
-        } else if (this.mockTransport.postMessage && accessToken && integration.channel_id) {
+        }
+
+        // Fallback to chat.postMessage if webhook not present or failed
+        if (!mockSuccess && this.mockTransport.postMessage && accessToken && integration.channel_id) {
           const res = await this.mockTransport.postMessage(accessToken, integration.channel_id, payload);
-          if (!res.ok) {
+          if (res.ok) {
+            mockSuccess = true;
+          } else {
             if (
               res.error === 'token_revoked' ||
               res.error === 'invalid_auth' ||
@@ -292,15 +306,37 @@ export class SlackService {
             ) {
               await SlackRepository.markRevoked(integration.id);
             }
+            if (redis && cooldownAcquired) {
+              await redis.del(cooldownKey).catch(() => {});
+            }
             return { sent: false, reason: `MOCK_POST_MESSAGE_FAILED: ${res.error}` };
           }
+        } else if (webhookFailed && (!this.mockTransport.postMessage || !accessToken || !integration.channel_id)) {
+          if (webhookStatus === 404 || webhookStatus === 410) {
+            await SlackRepository.markRevoked(integration.id);
+          }
+          if (redis && cooldownAcquired) {
+            await redis.del(cooldownKey).catch(() => {});
+          }
+          return { sent: false, reason: `MOCK_WEBHOOK_FAILED: ${webhookStatus}` };
         }
-        return {
-          sent: true,
-          channel: integration.channel_name,
-          teamName: integration.team_name,
-        };
+
+        if (mockSuccess) {
+          return {
+            sent: true,
+            channel: integration.channel_name,
+            teamName: integration.team_name,
+          };
+        }
+        if (redis && cooldownAcquired) {
+          await redis.del(cooldownKey).catch(() => {});
+        }
+        return { sent: false, reason: 'NO_VALID_DELIVERY_METHOD' };
       }
+
+      let deliverySuccess = false;
+      let webhookFailed = false;
+      let webhookStatus = 0;
 
       // Priority 1: Incoming Webhook (if provided during OAuth installation)
       if (webhookUrl) {
@@ -315,18 +351,33 @@ export class SlackService {
             signal: controller.signal,
           });
 
-          if (!response.ok) {
-            if (response.status === 404 || response.status === 410) {
-              await SlackRepository.markRevoked(integration.id);
-            }
-            console.warn(`[Slack Webhook] Failed with status ${response.status}`);
-            return { sent: false, reason: `HTTP_${response.status}` };
+          if (response.ok) {
+            deliverySuccess = true;
+          } else {
+            webhookFailed = true;
+            webhookStatus = response.status;
+            let errorBody = '';
+            try {
+              errorBody = await response.text();
+            } catch {}
+
+            console.warn(
+              `[Slack Webhook] Incoming webhook returned HTTP ${response.status}${
+                errorBody ? `: ${errorBody.trim()}` : ''
+              }`
+            );
           }
         } finally {
           clearTimeout(timeout);
         }
-      } else if (accessToken && integration.channel_id) {
-        // Priority 2: chat.postMessage API using bot token
+      }
+
+      // Priority 2: chat.postMessage API using bot token (fallback if webhook fails or is not present)
+      if (!deliverySuccess && accessToken && integration.channel_id) {
+        if (webhookFailed) {
+          console.log('[Slack] Attempting chat.postMessage fallback after webhook failure.');
+        }
+
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 6000);
 
@@ -345,9 +396,18 @@ export class SlackService {
           });
 
           const data: any = await response.json();
-          if (!data.ok) {
-            if (data.error === 'token_revoked' || data.error === 'invalid_auth' || data.error === 'account_inactive') {
+          if (data.ok) {
+            deliverySuccess = true;
+          } else {
+            if (
+              data.error === 'token_revoked' ||
+              data.error === 'invalid_auth' ||
+              data.error === 'account_inactive'
+            ) {
               await SlackRepository.markRevoked(integration.id);
+            }
+            if (redis && cooldownAcquired) {
+              await redis.del(cooldownKey).catch(() => {});
             }
             console.warn(`[Slack API] chat.postMessage failed: ${data.error}`);
             return { sent: false, reason: data.error };
@@ -355,17 +415,36 @@ export class SlackService {
         } finally {
           clearTimeout(timeout);
         }
+      } else if (webhookFailed && (!accessToken || !integration.channel_id)) {
+        // Webhook failed and no fallback API token exists
+        if (webhookStatus === 404 || webhookStatus === 410) {
+          await SlackRepository.markRevoked(integration.id);
+        }
+        if (redis && cooldownAcquired) {
+          await redis.del(cooldownKey).catch(() => {});
+        }
+        return { sent: false, reason: `HTTP_${webhookStatus}` };
       }
 
-      console.log(
-        `[Slack] Rate limit alert successfully dispatched to ${integration.team_name} (#${integration.channel_name || 'alerts'}).`
-      );
-      return {
-        sent: true,
-        channel: integration.channel_name,
-        teamName: integration.team_name,
-      };
+      if (deliverySuccess) {
+        console.log(
+          `[Slack] Rate limit alert successfully dispatched to ${integration.team_name} (#${integration.channel_name || 'alerts'}).`
+        );
+        return {
+          sent: true,
+          channel: integration.channel_name,
+          teamName: integration.team_name,
+        };
+      }
+
+      if (redis && cooldownAcquired) {
+        await redis.del(cooldownKey).catch(() => {});
+      }
+      return { sent: false, reason: 'NO_VALID_DELIVERY_METHOD' };
     } catch (err: any) {
+      if (redis && cooldownAcquired) {
+        await redis.del(cooldownKey).catch(() => {});
+      }
       console.warn('[Slack Alert Delivery Error]', err instanceof Error ? err.message : err);
       return { sent: false, reason: err.message || 'DELIVERY_ERROR' };
     }

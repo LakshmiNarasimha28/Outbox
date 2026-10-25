@@ -37,6 +37,14 @@ describe('Slack OAuth v2 & Hourly Rate-Limit Notification Tests', () => {
 
   after(async () => {
     SlackService.setMockTransport(null);
+    try {
+      await SlackRepository.deleteByUserId(testUserA.id);
+      await SlackRepository.deleteByUserId(testUserB.id);
+      await SlackRepository.deleteByUserId('revoked-test-user');
+      await SlackRepository.deleteByUserId('fallback-test-user');
+    } catch {
+      // Ignore cleanup error if already removed
+    }
     await closeEmailQueue();
     await closeRedisConnection();
     await closeDatabasePool();
@@ -335,5 +343,90 @@ describe('Slack OAuth v2 & Hourly Rate-Limit Notification Tests', () => {
     // Check DB status was transitioned to REVOKED
     const record = await SlackRepository.findByUserId(revokedUser.id);
     assert.equal(record?.status, 'REVOKED');
+
+    // Subsequent notifications should be skipped because status is REVOKED
+    const subsequentResult = await SlackService.sendRateLimitNotification({
+      sender: revokedUser.email,
+      limit: 10,
+      retryAfterMs: 3600000,
+      resumeTime: new Date(Date.now() + 3600000),
+      userId: revokedUser.id,
+    });
+    assert.equal(subsequentResult.sent, false);
+    assert.equal(subsequentResult.reason, 'NO_ACTIVE_INTEGRATION');
+
+    // Verify GET /api/slack/status reports isRevoked: true and reconnect guidance
+    const revokedToken = AuthService.signSessionToken({
+      id: revokedUser.id,
+      email: revokedUser.email,
+      name: 'Revoked User',
+      avatar: null,
+    });
+    const statusRes = await request(app)
+      .get('/api/slack/status')
+      .set('Authorization', `Bearer ${revokedToken}`);
+
+    assert.equal(statusRes.status, 200);
+    assert.equal(statusRes.body.connected, false);
+    assert.equal(statusRes.body.isRevoked, true);
+    assert.ok(statusRes.body.message?.includes('reconnect'));
+  });
+
+  it('should fall back to chat.postMessage API when incoming webhook returns 404', async () => {
+    const fallbackUser = {
+      id: 'fallback-test-user',
+      email: 'fallback-test@outbox.labs',
+    };
+
+    const redis = getSharedRedisClient();
+    if (redis) {
+      await redis.del(`slack:ratelimit:cooldown:${encodeURIComponent(fallbackUser.email)}`);
+    }
+
+    await SlackRepository.upsert({
+      user_id: fallbackUser.id,
+      user_email: fallbackUser.email,
+      sender: fallbackUser.email,
+      team_id: 'T_FALLBACK_CORP',
+      team_name: 'Fallback Corp',
+      channel_id: 'C_FALLBACK',
+      channel_name: 'alerts-fallback',
+      access_token: 'xoxb-valid-bot-token',
+      webhook_url: 'https://hooks.slack.com/services/DEAD/WEBHOOK/404',
+    });
+
+    let webhookAttempted = false;
+    let postMessageAttempted = false;
+
+    SlackService.setMockTransport({
+      sendWebhook: async () => {
+        webhookAttempted = true;
+        // Simulate dead webhook returning HTTP 404
+        return { ok: false, status: 404, text: 'No service' };
+      },
+      postMessage: async (token, channel, _payload) => {
+        postMessageAttempted = true;
+        assert.equal(token, 'xoxb-valid-bot-token');
+        assert.equal(channel, 'C_FALLBACK');
+        return { ok: true };
+      },
+    });
+
+    const result = await SlackService.sendRateLimitNotification({
+      sender: fallbackUser.email,
+      limit: 10,
+      retryAfterMs: 3600000,
+      resumeTime: new Date(Date.now() + 3600000),
+      userId: fallbackUser.id,
+    });
+
+    assert.ok(webhookAttempted, 'Should attempt incoming webhook first');
+    assert.ok(postMessageAttempted, 'Should fall back to chat.postMessage when webhook gives 404');
+    assert.equal(result.sent, true, 'Alert should be delivered successfully via fallback');
+    assert.equal(result.channel, 'alerts-fallback');
+
+    // Integration should still be ACTIVE because fallback succeeded
+    const record = await SlackRepository.findByUserId(fallbackUser.id);
+    assert.equal(record?.status, 'ACTIVE');
   });
 });

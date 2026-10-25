@@ -8,6 +8,7 @@ import type {
   HealthResponse,
   AuthMeResponse,
   SlackStatusResponse,
+  QueueTelemetryResponse,
 } from '../types/email';
 
 const API_BASE = '/api';
@@ -187,5 +188,14 @@ export const api = {
         method: 'POST',
       }
     );
+  },
+
+  /**
+   * Fetch live BullMQ queue telemetry and job counts.
+   */
+  async getQueueStats(): Promise<QueueTelemetryResponse> {
+    return request<QueueTelemetryResponse>('/api/queues/stats', {
+      method: 'GET',
+    });
   },
 };

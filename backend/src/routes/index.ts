@@ -3,6 +3,7 @@ import { healthRoutes } from './healthRoutes';
 import { emailRoutes } from './emailRoutes';
 import { authRoutes } from './authRoutes';
 import { slackRoutes } from './slackRoutes';
+import { queueRoutes } from './queueRoutes';
 
 const router = Router();
 
@@ -11,6 +12,7 @@ router.use('/health', healthRoutes);
 router.use('/emails', emailRoutes);
 router.use('/auth', authRoutes);
 router.use('/slack', slackRoutes);
+router.use('/queues', queueRoutes);
 
 // Also mount /auth/slack aliases for convenient callback routing
 router.get('/auth/slack', (req, res, next) => {
