@@ -71,6 +71,13 @@ router.get('/rate-limit', EmailController.getRateLimitStatus);
 router.get('/search', EmailController.searchEmails);
 
 /**
+ * @route   POST /api/emails/:id/cancel
+ * @desc    Cancel a pending scheduled email and remove from BullMQ delayed queue
+ * @access  Authenticated
+ */
+router.post('/:id/cancel', EmailController.cancelScheduledEmail);
+
+/**
  * @route   GET /api/emails/:id
  * @desc    Retrieve details and delivery status of a single email
  * @access  Public

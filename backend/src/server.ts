@@ -7,19 +7,22 @@ import { initEmailWorker, closeEmailWorker } from './worker/emailWorker';
 
 const app = createApp();
 
-const server = app.listen(env.PORT, () => {
+const server = app.listen(env.PORT, '0.0.0.0', () => {
   console.log(`===============================================`);
   console.log(` Outbox Job Scheduler - Backend Service`);
   console.log(` Environment : ${env.NODE_ENV}`);
+  console.log(` Host        : 0.0.0.0`);
   console.log(` Port        : ${env.PORT}`);
   console.log(` Health Check: http://localhost:${env.PORT}/health`);
   console.log(` API Router  : http://localhost:${env.PORT}/api`);
   console.log(` Emails API  : http://localhost:${env.PORT}/api/emails`);
   console.log(`===============================================`);
 
-  if (isRedisConfigured()) {
+  if (env.START_WORKER && isRedisConfigured()) {
     console.log(`[Worker] Starting email worker (concurrency: ${env.WORKER_CONCURRENCY}, throttle: ${env.MIN_SEND_INTERVAL_MS}ms)...`);
     initEmailWorker();
+  } else if (!env.START_WORKER) {
+    console.log(`[Worker Notice] START_WORKER is false. Email worker not started in this process.`);
   } else {
     console.warn(`[Worker Notice] Redis not configured. Email worker not started.`);
   }
@@ -39,8 +42,10 @@ async function gracefulShutdown(signal: string) {
     console.log('[Server] HTTP server closed.');
 
     try {
-      console.log('[Server] Closing email worker...');
-      await closeEmailWorker();
+      if (env.START_WORKER) {
+        console.log('[Server] Closing email worker...');
+        await closeEmailWorker();
+      }
 
       console.log('[Server] Closing email queue...');
       await closeEmailQueue();

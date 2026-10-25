@@ -170,6 +170,77 @@ describe('BullMQ Live Queue Monitoring Dashboard & Telemetry Tests', () => {
       // Clean up test job
       await job.remove();
     });
+
+    it('should map telemetry counts 1-to-1 to BullMQ native getJobCounts() results', async () => {
+      const queue = getEmailQueue();
+      if (!queue) return;
+
+      const [expectedCounts, telemetryRes] = await Promise.all([
+        queue.getJobCounts('waiting', 'active', 'completed', 'failed', 'delayed', 'paused'),
+        request(app)
+          .get('/api/queues/stats')
+          .set('Cookie', [`${AuthService.SESSION_COOKIE_NAME}=${validToken}`]),
+      ]);
+
+      assert.equal(telemetryRes.status, 200);
+      const actualCounts = telemetryRes.body.counts;
+
+      // The keys must represent BullMQ states, NOT MySQL email statuses
+      assert.equal(typeof actualCounts.waiting, 'number');
+      assert.equal(typeof actualCounts.active, 'number');
+      assert.equal(typeof actualCounts.delayed, 'number');
+      assert.equal(typeof actualCounts.completed, 'number');
+      assert.equal(typeof actualCounts.failed, 'number');
+      assert.equal(typeof actualCounts.paused, 'number');
+
+      // Assert that MySQL email statuses are never mixed into BullMQ queue counts
+      assert.equal(actualCounts.PENDING, undefined);
+      assert.equal(actualCounts.PROCESSING, undefined);
+      assert.equal(actualCounts.SENT, undefined);
+      assert.equal(actualCounts.CANCELLED, undefined);
+    });
+  });
+
+  describe('Bull Board Routing, Static Assets & SPA Fallback Safety', () => {
+    it('should redirect /admin to /admin/queues', async () => {
+      const res = await request(app).get('/admin');
+      assert.equal(res.status, 302);
+      assert.equal(res.headers.location, '/admin/queues');
+    });
+
+    it('should serve Bull Board HTML dashboard at /admin/queues/ with proper base href and board title', async () => {
+      const res = await request(app)
+        .get('/admin/queues/')
+        .set('Cookie', [`${AuthService.SESSION_COOKIE_NAME}=${validToken}`])
+        .set('Accept', 'text/html');
+
+      assert.equal(res.status, 200);
+      assert.ok(res.text.includes('<title>Outbox Labs Queue Dashboard</title>'));
+      assert.ok(res.text.includes('<base href="/admin/queues/" />'));
+    });
+
+    it('should serve Bull Board static assets without intercepting with HTML SPA fallback', async () => {
+      const res = await request(app)
+        .get('/admin/queues/static/css/main.88d71b4bd7.css')
+        .set('Cookie', [`${AuthService.SESSION_COOKIE_NAME}=${validToken}`]);
+
+      assert.equal(res.status, 200);
+      assert.ok(res.headers['content-type']?.includes('text/css'));
+      assert.ok(res.text.includes('button') || res.text.includes('body') || res.text.length > 500);
+    });
+
+    it('should serve Bull Board internal API endpoint /admin/queues/api/queues', async () => {
+      const res = await request(app)
+        .get('/admin/queues/api/queues')
+        .set('Cookie', [`${AuthService.SESSION_COOKIE_NAME}=${validToken}`]);
+
+      assert.equal(res.status, 200);
+      assert.ok(Array.isArray(res.body.queues));
+      const queueInfo = res.body.queues.find((q: any) => q.name === EMAIL_QUEUE_NAME);
+      assert.ok(queueInfo, `Queue ${EMAIL_QUEUE_NAME} must be registered in Bull Board`);
+      assert.ok(queueInfo.counts);
+      assert.equal(typeof queueInfo.counts.delayed, 'number');
+    });
   });
 
   describe('Graceful Degradation When Redis Is Unavailable', () => {

@@ -6,7 +6,7 @@ export const DeliveryHistoryTab: React.FC = () => {
   const [emails, setEmails] = useState<EmailJobRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'SENT' | 'FAILED'>('ALL');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'SENT' | 'FAILED' | 'CANCELLED'>('ALL');
   const [selectedFailedEmail, setSelectedFailedEmail] = useState<EmailJobRecord | null>(null);
 
   const fetchHistory = async () => {
@@ -73,6 +73,14 @@ export const DeliveryHistoryTab: React.FC = () => {
               }`}
             >
               Failed ({emails.filter((e) => e.status === 'FAILED').length})
+            </button>
+            <button
+              onClick={() => setStatusFilter('CANCELLED')}
+              className={`px-3 py-1 rounded-lg transition-colors ${
+                statusFilter === 'CANCELLED' ? 'bg-amber-600 text-white font-semibold' : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              Cancelled ({emails.filter((e) => e.status === 'CANCELLED').length})
             </button>
           </div>
 
@@ -166,6 +174,10 @@ export const DeliveryHistoryTab: React.FC = () => {
                         >
                           <span>FAILED (Inspect)</span>
                         </button>
+                      ) : item.status === 'CANCELLED' ? (
+                        <span className="inline-flex items-center space-x-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                          <span>CANCELLED</span>
+                        </span>
                       ) : (
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400">
                           {item.status}

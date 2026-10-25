@@ -12,9 +12,12 @@
     "build:all": "npm run build:backend && npm run build:frontend",
     "type-check": "npm --prefix backend run type-check && npm --prefix frontend run build",
     "verify:connections": "npm --prefix backend run verify:connections",
+    "start": "npm --prefix backend start",
+    "worker": "npm --prefix backend run worker",
     "test": "npm --prefix backend test",
     "test:backend": "npm --prefix backend test",
     "db:migrate": "npm --prefix backend run db:migrate",
+    "db:migrate:prod": "npm --prefix backend run db:migrate:prod",
     "ethereal:create": "npm --prefix backend run ethereal:create",
     "es:sync": "npm --prefix backend run es:sync"
   },

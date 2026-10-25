@@ -36,8 +36,22 @@ const envSchema = z.object({
       message: 'PORT must be a valid port number (1-65535)',
     }),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
+  TRUST_PROXY: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) return undefined;
+      if (val.toLowerCase() === 'true') return true;
+      if (val.toLowerCase() === 'false') return false;
+      const num = parseInt(val, 10);
+      return isNaN(num) ? val : num;
+    }),
 
-  // MySQL Database Configuration (Dedicated outbox_app Account)
+  // MySQL Database Configuration (Dedicated outbox_app Account or DATABASE_URL)
+  DATABASE_URL: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
   DB_HOST: z.string().default('127.0.0.1'),
   DB_PORT: z
     .string()
@@ -56,6 +70,24 @@ const envSchema = z.object({
     .string()
     .default('10')
     .transform((val) => parseInt(val, 10)),
+  DB_SSL: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) return undefined;
+      return val.toLowerCase() === 'true' || val === '1';
+    }),
+  DB_SSL_CA: z
+    .string()
+    .optional()
+    .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
+  DB_SSL_REJECT_UNAUTHORIZED: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (val === undefined || val === '') return true;
+      return val.toLowerCase() !== 'false' && val !== '0';
+    }),
 
   // Redis / BullMQ Configuration (Hosted Redis instance)
   REDIS_URL: z
@@ -113,7 +145,14 @@ const envSchema = z.object({
     .transform((val) => (val && val.trim().length > 0 ? val.trim() : undefined)),
   DEFAULT_SENDER: z.string().default('scheduler@outbox.labs'),
 
-  // Worker Concurrency & Throttling
+  // Worker Concurrency, Throttling & Lifecycle
+  START_WORKER: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (val === undefined || val === '') return true;
+      return val.toLowerCase() !== 'false' && val !== '0';
+    }),
   WORKER_CONCURRENCY: z
     .string()
     .default('5')

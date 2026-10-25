@@ -5,13 +5,14 @@ const router = Router();
 
 /**
  * @route   GET /health
- * @desc    Comprehensive health check including database and Redis connectivity
+ * @desc    Comprehensive health check including database, Redis, and integration connectivity
  * @access  Public
  */
-router.get('/', async (_req: Request, res: Response) => {
+router.get('/', async (req: Request, res: Response) => {
   try {
     const report = await HealthService.getHealthReport();
-    const httpStatus = report.status === 'ok' ? 200 : 200; // Returns 200 with degraded details so health dashboards can display service state
+    const isStrict = req.query.strict === 'true';
+    const httpStatus = isStrict && report.status !== 'ok' ? 503 : 200;
     res.status(httpStatus).json(report);
   } catch (error) {
     res.status(500).json({
@@ -24,11 +25,42 @@ router.get('/', async (_req: Request, res: Response) => {
 
 /**
  * @route   GET /health/live
- * @desc    Basic liveness probe for process monitoring
+ * @desc    Lightweight liveness probe for container orchestration
  * @access  Public
  */
 router.get('/live', (_req: Request, res: Response) => {
   res.status(200).json(HealthService.getLiveness());
+});
+
+/**
+ * @route   GET /health/ready
+ * @desc    Readiness probe distinguishing core readiness (MySQL, Redis) from optional integrations
+ * @access  Public
+ */
+router.get('/ready', async (_req: Request, res: Response) => {
+  try {
+    const status = await HealthService.isReady();
+    if (status.ready) {
+      res.status(200).json({
+        status: 'ready',
+        ...status,
+        timestamp: new Date().toISOString(),
+      });
+    } else {
+      res.status(503).json({
+        status: 'not_ready',
+        ...status,
+        message: 'Core service dependencies (MySQL or Redis) are not ready',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  } catch (error) {
+    res.status(503).json({
+      status: 'not_ready',
+      error: error instanceof Error ? error.message : 'Readiness check failed',
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 
 export const healthRoutes = router;

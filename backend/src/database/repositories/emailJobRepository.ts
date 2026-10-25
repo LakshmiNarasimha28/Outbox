@@ -101,28 +101,39 @@ export class EmailJobRepository {
 
   /**
    * Retrieves pending email jobs for queue recovery.
+   * Scopes to a specific user when userId is supplied.
    */
-  public static async findPendingUnqueued(limit = 100): Promise<EmailJobRecord[]> {
+  public static async findPendingUnqueued(limit = 100, userId?: string): Promise<EmailJobRecord[]> {
     const pool = getDatabasePool();
+    const conditions = ["status = 'PENDING'"];
+    const params: (string | number)[] = [];
+
+    if (userId) {
+      conditions.push('user_id = ?');
+      params.push(userId);
+    }
+
+    const where = `WHERE ${conditions.join(' AND ')}`;
     const query = `
       SELECT * FROM email_jobs
-      WHERE status = 'PENDING'
+      ${where}
       ORDER BY scheduled_at ASC
       LIMIT ?
     `;
-    const [rows] = await pool.query<EmailJobRow[]>(query, [limit]);
+    params.push(limit);
+    const [rows] = await pool.query<EmailJobRow[]>(query, params);
     return rows;
   }
 
   /**
-   * Finds an email job by primary key ID, optionally verifying user ownership.
+   * Finds an email job by primary key ID, strictly verifying user ownership when userId is supplied.
    */
   public static async findById(id: string, userId?: string): Promise<EmailJobRecord | null> {
     const pool = getDatabasePool();
     let query = `SELECT * FROM email_jobs WHERE id = ?`;
     const params: any[] = [id];
     if (userId) {
-      query += ` AND (user_id = ? OR user_id IS NULL)`;
+      query += ` AND user_id = ?`;
       params.push(userId);
     }
     query += ` LIMIT 1`;
@@ -142,6 +153,7 @@ export class EmailJobRepository {
 
   /**
    * Lists email jobs with optional filtering by status, recipient, userId, and pagination.
+   * When userId is supplied, strictly returns only records belonging to that exact user.
    */
   public static async findMany(filters: {
     status?: EmailStatus;
@@ -165,7 +177,7 @@ export class EmailJobRepository {
     }
 
     if (filters.userId) {
-      conditions.push('(user_id = ? OR user_id IS NULL)');
+      conditions.push('user_id = ?');
       params.push(filters.userId);
     }
 
@@ -189,7 +201,7 @@ export class EmailJobRepository {
   }
 
   /**
-   * Lists scheduled emails that are either PENDING or currently PROCESSING, scoped by user.
+   * Lists scheduled emails that are either PENDING or currently PROCESSING, strictly scoped by user.
    */
   public static async findScheduled(
     limit: number = 50,
@@ -201,7 +213,7 @@ export class EmailJobRepository {
     const params: (string | number)[] = [];
 
     if (userId) {
-      conditions.push('(user_id = ? OR user_id IS NULL)');
+      conditions.push('user_id = ?');
       params.push(userId);
     }
 
@@ -225,7 +237,7 @@ export class EmailJobRepository {
   }
 
   /**
-   * Lists completed emails that are either SENT or FAILED, scoped by user.
+   * Lists completed emails that are either SENT or FAILED, strictly scoped by user.
    */
   public static async findHistory(
     limit: number = 50,
@@ -237,7 +249,7 @@ export class EmailJobRepository {
     const params: (string | number)[] = [];
 
     if (userId) {
-      conditions.push('(user_id = ? OR user_id IS NULL)');
+      conditions.push('user_id = ?');
       params.push(userId);
     }
 
@@ -370,5 +382,95 @@ export class EmailJobRepository {
       throw new Error(`Email job ${id} not found after rate limit reschedule`);
     }
     return updated;
+  }
+
+  /**
+   * Production-safe atomic cancellation of a scheduled email.
+   * Acquires a row lock (SELECT ... FOR UPDATE) inside an InnoDB transaction.
+   * Ensures strict ownership and that only PENDING jobs can be cancelled.
+   * Eliminates worker races: if worker is already processing/sent, cancellation cannot commit.
+   */
+  public static async cancelJob(
+    id: string,
+    userId?: string
+  ): Promise<{
+    success: boolean;
+    reason?: 'NOT_FOUND' | 'UNAUTHORIZED' | 'ALREADY_SENT' | 'ALREADY_FAILED' | 'ALREADY_PROCESSING' | 'ALREADY_CANCELLED';
+    record?: EmailJobRecord;
+  }> {
+    const pool = getDatabasePool();
+    const connection = await pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      // 1. Lock the specific row for update
+      const [rows] = await connection.query<EmailJobRow[]>(
+        'SELECT * FROM email_jobs WHERE id = ? FOR UPDATE',
+        [id]
+      );
+
+      if (rows.length === 0) {
+        await connection.rollback();
+        return { success: false, reason: 'NOT_FOUND' };
+      }
+
+      const job = rows[0];
+
+      // 2. Strict ownership validation
+      if (userId) {
+        if (!job.user_id || job.user_id !== userId) {
+          await connection.rollback();
+          return { success: false, reason: 'UNAUTHORIZED' };
+        }
+      }
+
+      // 3. State validation: only PENDING jobs can be cancelled
+      if (job.status === 'SENT') {
+        await connection.rollback();
+        return { success: false, reason: 'ALREADY_SENT', record: job };
+      }
+
+      if (job.status === 'FAILED') {
+        await connection.rollback();
+        return { success: false, reason: 'ALREADY_FAILED', record: job };
+      }
+
+      if (job.status === 'PROCESSING') {
+        await connection.rollback();
+        return { success: false, reason: 'ALREADY_PROCESSING', record: job };
+      }
+
+      if (job.status === 'CANCELLED') {
+        await connection.rollback();
+        return { success: false, reason: 'ALREADY_CANCELLED', record: job };
+      }
+
+      // 4. Atomically transition status to CANCELLED
+      await connection.query<ResultSetHeader>(
+        `UPDATE email_jobs
+         SET status = 'CANCELLED',
+             error_message = 'Cancelled by user'
+         WHERE id = ?`,
+        [id]
+      );
+
+      await connection.commit();
+
+      const [updatedRows] = await connection.query<EmailJobRow[]>(
+        'SELECT * FROM email_jobs WHERE id = ?',
+        [id]
+      );
+
+      return {
+        success: true,
+        record: updatedRows[0] || { ...job, status: 'CANCELLED' as EmailStatus },
+      };
+    } catch (err) {
+      await connection.rollback();
+      throw err;
+    } finally {
+      connection.release();
+    }
   }
 }

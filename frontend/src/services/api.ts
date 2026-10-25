@@ -12,6 +12,7 @@ import type {
   ParseLeadsResponse,
   ScheduleBatchPayload,
   ScheduleBatchResponse,
+  EmailJobRecord,
 } from '../types/email';
 
 const API_BASE = '/api';
@@ -98,6 +99,18 @@ export const api = {
     return request<EmailListResponse>(`/api/emails/scheduled?limit=${limit}&offset=${offset}`, {
       method: 'GET',
     });
+  },
+
+  /**
+   * Cancel a scheduled email by ID.
+   */
+  async cancelScheduledEmail(id: string): Promise<{ success: boolean; message: string; email: EmailJobRecord }> {
+    return request<{ success: boolean; message: string; email: EmailJobRecord }>(
+      `/api/emails/${encodeURIComponent(id)}/cancel`,
+      {
+        method: 'POST',
+      }
+    );
   },
 
   /**

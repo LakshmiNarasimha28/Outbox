@@ -160,8 +160,13 @@ export function parseLeads(rawContent: string): LeadParseResult {
         .map((t) => t.replace(/^["']|["']$/g, '').trim())
         .filter((t) => t.length > 0);
 
+      // Check how many tokens on this line contain '@'
+      const emailTokensCount = tokens.filter((t) => t.includes('@')).length;
+      // If a line has multiple tokens and contains multiple emails (or 0 emails),
+      // it is treated as a delimited list of emails (e.g. "a@b.com, c@d.com, invalid-email")
+      const isDelimitedEmailList = tokens.length > 1 && (emailTokensCount >= 2 || emailTokensCount === 0);
+
       for (const token of tokens) {
-        // If token itself contains @, treat it as candidate
         if (token.includes('@')) {
           totalDetected++;
           if (isValidEmail(token)) {
@@ -198,10 +203,25 @@ export function parseLeads(rawContent: string): LeadParseResult {
               }
             }
           }
-        } else if (token.length > 0 && !token.includes(' ') && token.includes('.')) {
-          // Suspicious token that looks like a broken address without @
-          // Only count as invalid if it doesn't look like an arbitrary word
-          if (token.includes('.com') || token.includes('.org') || token.includes('.net') || token.includes('.io')) {
+        } else {
+          // Token does not contain '@'
+          // It is an invalid candidate if:
+          // 1. The line is a single entry (e.g. TXT file where each line is an intended email, such as 'invalid-email')
+          // 2. The line is a delimited list of email candidates
+          // 3. Or the token looks like a broken address without @ (e.g. 'user.domain.com')
+          const looksLikeBrokenAddress =
+            !token.includes(' ') &&
+            token.includes('.') &&
+            (token.includes('.com') ||
+              token.includes('.org') ||
+              token.includes('.net') ||
+              token.includes('.io') ||
+              token.includes('.co') ||
+              token.includes('.edu'));
+
+          const isCandidateInList = (tokens.length === 1 || isDelimitedEmailList) && !token.includes(' ');
+
+          if (looksLikeBrokenAddress || isCandidateInList) {
             totalDetected++;
             invalidCount++;
             if (invalidSamples.length < 5) {

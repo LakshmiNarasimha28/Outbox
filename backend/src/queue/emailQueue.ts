@@ -133,6 +133,36 @@ export async function scheduleEmailJobs(
   return jobs.map((job, idx) => job.id || bulkJobs[idx].opts.jobId);
 }
 
+/**
+ * Removes a scheduled delayed or waiting job from the BullMQ queue by email record ID.
+ * Safely handles missing jobs, already-active jobs, or Redis downtime.
+ */
+export async function removeScheduledJob(
+  emailId: string
+): Promise<{ removed: boolean; state?: string }> {
+  const queue = getEmailQueue();
+  if (!queue) {
+    return { removed: false };
+  }
+  const jobId = `email-job-${emailId}`;
+  try {
+    const job = await queue.getJob(jobId);
+    if (!job) {
+      return { removed: false, state: 'not_found' };
+    }
+    const state = await job.getState();
+    // Only remove if it is not currently active/running in worker
+    if (state === 'delayed' || state === 'waiting') {
+      await job.remove();
+      return { removed: true, state };
+    }
+    return { removed: false, state };
+  } catch (err: any) {
+    console.warn(`[BullMQ] Notice removing job for email ${emailId}: ${err?.message}`);
+    return { removed: false, state: 'error' };
+  }
+}
+
 export async function closeEmailQueue(): Promise<void> {
   if (emailQueue) {
     try {

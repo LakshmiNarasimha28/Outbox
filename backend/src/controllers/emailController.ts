@@ -7,7 +7,7 @@ import {
   scheduleBatchSchema,
 } from '../validation/emailSchemas';
 import { EmailJobRepository } from '../database/repositories/emailJobRepository';
-import { scheduleEmailJob, scheduleEmailJobs } from '../queue/emailQueue';
+import { scheduleEmailJob, scheduleEmailJobs, removeScheduledJob } from '../queue/emailQueue';
 import { RateLimiterService } from '../services/rateLimiterService';
 import { ElasticsearchService } from '../services/elasticsearchService';
 import { parseLeads } from '../utils/leadParser';
@@ -162,9 +162,10 @@ export class EmailController {
 
   /**
    * Recovers any PENDING jobs from MySQL and enqueues them in BullMQ idempotently.
+   * Scoped to the authenticated user if present.
    */
   public static async recoverPendingJobs(req: Request, res: Response): Promise<void> {
-    const pending = await EmailJobRepository.findPendingUnqueued(200);
+    const pending = await EmailJobRepository.findPendingUnqueued(200, req.user?.id);
     if (pending.length === 0) {
       res.status(200).json({
         success: true,
@@ -413,7 +414,10 @@ export class EmailController {
     }
 
     try {
-      const searchResult = await ElasticsearchService.searchEmails(parseResult.data);
+      const searchResult = await ElasticsearchService.searchEmails({
+        ...parseResult.data,
+        userId: req.user?.id,
+      });
       res.status(200).json({
         success: true,
         ...searchResult,
@@ -423,6 +427,105 @@ export class EmailController {
         success: false,
         error: 'Search Query Failed',
         message: err instanceof Error ? err.message : 'Unknown Elasticsearch error',
+      });
+    }
+  }
+
+  /**
+   * Production-safe cancellation of a scheduled email by ID.
+   * Enforces strict ownership, validates that the email is PENDING (not already PROCESSING, SENT, or FAILED),
+   * coordinates MySQL atomic status transition with BullMQ job removal, and syncs Elasticsearch.
+   */
+  public static async cancelScheduledEmail(req: Request, res: Response): Promise<void> {
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    if (!id) {
+      res.status(400).json({ success: false, error: 'Email ID parameter is required' });
+      return;
+    }
+
+    try {
+      const result = await EmailJobRepository.cancelJob(id, req.user?.id);
+
+      if (!result.success) {
+        switch (result.reason) {
+          case 'NOT_FOUND':
+            res.status(404).json({
+              success: false,
+              error: 'Not Found',
+              message: `Email with ID '${id}' not found`,
+            });
+            return;
+
+          case 'UNAUTHORIZED':
+            res.status(403).json({
+              success: false,
+              error: 'Forbidden',
+              message: 'You are not authorized to cancel this email',
+            });
+            return;
+
+          case 'ALREADY_SENT':
+            res.status(400).json({
+              success: false,
+              error: 'Invalid State',
+              message: 'Cannot cancel an email that has already been sent',
+            });
+            return;
+
+          case 'ALREADY_FAILED':
+            res.status(400).json({
+              success: false,
+              error: 'Invalid State',
+              message: 'Cannot cancel an email that has already failed',
+            });
+            return;
+
+          case 'ALREADY_PROCESSING':
+            res.status(409).json({
+              success: false,
+              error: 'Conflict',
+              message: 'Cannot cancel an email that is currently being processed',
+            });
+            return;
+
+          case 'ALREADY_CANCELLED':
+            res.status(400).json({
+              success: false,
+              error: 'Invalid State',
+              message: 'Email has already been cancelled',
+            });
+            return;
+
+          default:
+            res.status(400).json({
+              success: false,
+              error: 'Invalid State',
+              message: 'Email cannot be cancelled in its current state',
+            });
+            return;
+        }
+      }
+
+      // 2. Remove the delayed job from BullMQ queue
+      await removeScheduledJob(id);
+
+      // 3. Sync CANCELLED state to Elasticsearch
+      await ElasticsearchService.updateEmail(id, {
+        status: 'CANCELLED',
+        error_message: 'Cancelled by user',
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Email scheduled job cancelled successfully',
+        email: result.record,
+      });
+    } catch (err: any) {
+      console.error(`[EmailController] Error cancelling email ${id}:`, err);
+      res.status(500).json({
+        success: false,
+        error: 'Cancellation Failed',
+        message: err instanceof Error ? err.message : 'Unknown cancellation error',
       });
     }
   }

@@ -233,3 +233,31 @@ export async function closeEmailWorker(): Promise<void> {
     emailWorker = null;
   }
 }
+
+if (require.main === module) {
+  console.log(`===============================================`);
+  console.log(` Outbox Labs Email Worker (Standalone Process)`);
+  console.log(` Concurrency : ${env.WORKER_CONCURRENCY}`);
+  console.log(` Min Throttle: ${env.MIN_SEND_INTERVAL_MS}ms`);
+  console.log(`===============================================`);
+
+  const worker = initEmailWorker();
+  if (!worker) {
+    console.error('[Worker] Failed to start email worker: Redis is not configured.');
+    process.exit(1);
+  }
+
+  const handleShutdown = async (signal: string) => {
+    console.log(`\n[Worker] Received ${signal}. Shutting down worker gracefully...`);
+    await closeEmailWorker();
+    const { closeRedisConnection } = await import('../queue/redis');
+    const { closeDatabasePool } = await import('../database/mysql');
+    await closeRedisConnection();
+    await closeDatabasePool();
+    console.log('[Worker] Worker stopped cleanly.');
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+  process.on('SIGINT', () => handleShutdown('SIGINT'));
+}

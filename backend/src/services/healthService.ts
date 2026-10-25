@@ -77,4 +77,22 @@ export class HealthService {
       timestamp: new Date().toISOString(),
     };
   }
+
+  /**
+   * Checks whether the service is ready to accept traffic and schedule emails.
+   * Requires core MySQL and Redis connectivity; optional integrations (Elasticsearch, OAuth, Slack)
+   * do not prevent readiness.
+   */
+  public static async isReady(): Promise<{ ready: boolean; database: boolean; redis: boolean }> {
+    const [dbStatus, redisStatus] = await Promise.all([
+      checkDatabaseConnection(),
+      checkRedisConnection(),
+    ]);
+
+    return {
+      ready: dbStatus.connected && redisStatus.connected,
+      database: dbStatus.connected,
+      redis: redisStatus.connected,
+    };
+  }
 }

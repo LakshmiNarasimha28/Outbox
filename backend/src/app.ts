@@ -1,6 +1,8 @@
 import express, { Express, Request, Response, NextFunction } from 'express';
 import corsMiddleware from 'cors';
 import cookieParser from 'cookie-parser';
+import path from 'path';
+import fs from 'fs';
 import { env } from './config/env';
 import { apiRouter } from './routes';
 import { healthRoutes } from './routes/healthRoutes';
@@ -9,6 +11,14 @@ import { setupBullBoard } from './queue/bullBoard';
 
 export function createApp(): Express {
   const app = express();
+
+  // Configure Express trusted proxy behavior safely for reverse proxies (Render, Railway, Fly, Nginx, ALB)
+  // Does not blindly trust arbitrary proxies; uses configured TRUST_PROXY or 1 hop in production
+  if (env.TRUST_PROXY !== undefined) {
+    app.set('trust proxy', env.TRUST_PROXY);
+  } else if (env.NODE_ENV === 'production') {
+    app.set('trust proxy', 1);
+  }
 
   // CORS configuration
   app.use(
@@ -45,14 +55,45 @@ export function createApp(): Express {
   app.use('/api', apiRouter);
 
   // Bull Board Live Queue Dashboard
+  app.get('/admin', (_req: Request, res: Response) => res.redirect('/admin/queues'));
   setupBullBoard(app);
+
+  // Serve compiled frontend assets and handle SPA routing in production
+  const candidateFrontendPaths = [
+    path.resolve(__dirname, '../../frontend/dist'),
+    path.resolve(process.cwd(), 'frontend/dist'),
+    path.resolve(process.cwd(), '../frontend/dist'),
+  ];
+  let frontendDistPath: string | null = null;
+  for (const cand of candidateFrontendPaths) {
+    if (fs.existsSync(cand)) {
+      frontendDistPath = cand;
+      break;
+    }
+  }
+
+  if (frontendDistPath && (env.NODE_ENV === 'production' || process.env.SERVE_STATIC === 'true')) {
+    app.use(express.static(frontendDistPath));
+
+    // Client SPA fallback: serve index.html for GET requests that do not match API, health, or queue routes
+    app.get('*', (req: Request, res: Response, next: NextFunction) => {
+      if (
+        req.path.startsWith('/api') ||
+        req.path.startsWith('/health') ||
+        req.path.startsWith('/admin')
+      ) {
+        return next();
+      }
+      res.sendFile(path.join(frontendDistPath!, 'index.html'));
+    });
+  }
 
   // Fallback 404 handler
   app.use((req: Request, res: Response) => {
     res.status(404).json({
       error: 'Not Found',
       message: `Cannot ${req.method} ${req.originalUrl}`,
-      availableEndpoints: ['/health', '/health/live', '/api/health'],
+      availableEndpoints: ['/health', '/health/live', '/health/ready', '/api/health'],
     });
   });
 

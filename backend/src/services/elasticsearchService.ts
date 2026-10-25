@@ -22,6 +22,7 @@ export interface SearchEmailParams {
   limit?: number; // items per page
   sortBy?: 'scheduled_at' | 'created_at' | 'sent_at';
   sortOrder?: 'asc' | 'desc';
+  userId?: string;
 }
 
 export interface SearchEmailResult {
@@ -51,6 +52,7 @@ export interface IndexedEmailDocument {
   ethereal_message_id: string | null;
   ethereal_preview_url: string | null;
   idempotency_key: string | null;
+  user_id: string | null;
 }
 
 /**
@@ -92,6 +94,7 @@ export const EMAIL_INDEX_MAPPING = {
     ethereal_message_id: { type: 'keyword' },
     ethereal_preview_url: { type: 'keyword', index: false },
     idempotency_key: { type: 'keyword' },
+    user_id: { type: 'keyword' },
   },
 };
 
@@ -185,6 +188,7 @@ export class ElasticsearchService {
       ethereal_message_id: record.ethereal_message_id || null,
       ethereal_preview_url: record.ethereal_preview_url || null,
       idempotency_key: record.idempotency_key || null,
+      user_id: record.user_id || null,
     };
   }
 
@@ -373,6 +377,13 @@ export class ElasticsearchService {
       if (params.from) rangeClause.gte = new Date(params.from).toISOString();
       if (params.to) rangeClause.lte = new Date(params.to).toISOString();
       filter.push({ range: { scheduled_at: rangeClause } });
+    }
+
+    // 6. User tenant isolation filter
+    if (params.userId) {
+      filter.push({
+        term: { user_id: params.userId },
+      });
     }
 
     const query: any = {};

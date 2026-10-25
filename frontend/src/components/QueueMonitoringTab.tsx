@@ -128,55 +128,61 @@ export const QueueMonitoringTab: React.FC<QueueMonitoringTabProps> = () => {
       )}
 
       {/* Live KPI Metric Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-        {/* Waiting */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Waiting</span>
-            <span className="w-2 h-2 rounded-full bg-blue-400" />
-          </div>
-          <p className="text-2xl font-extrabold text-white font-mono">{counts.waiting}</p>
-          <p className="text-[10px] text-slate-500">Ready for worker pickup</p>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between text-xs text-slate-400">
+          <span className="font-semibold text-slate-300">BullMQ Redis Queue Metrics</span>
+          <span className="text-[11px] font-mono text-slate-500">Live counts from Redis getJobCounts()</span>
         </div>
-
-        {/* Active */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Active</span>
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 w-full">
+          {/* Waiting */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm min-w-0">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider truncate">Waiting</span>
+              <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0" />
+            </div>
+            <p className="text-2xl font-extrabold text-white font-mono">{counts.waiting}</p>
+            <p className="text-[10px] text-slate-500 truncate">Ready for worker pickup</p>
           </div>
-          <p className="text-2xl font-extrabold text-white font-mono">{counts.active}</p>
-          <p className="text-[10px] text-slate-500">Processing by worker</p>
-        </div>
 
-        {/* Delayed */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Delayed</span>
-            <span className="w-2 h-2 rounded-full bg-indigo-400" />
+          {/* Active */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm min-w-0">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider truncate">Active</span>
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+            </div>
+            <p className="text-2xl font-extrabold text-white font-mono">{counts.active}</p>
+            <p className="text-[10px] text-slate-500 truncate">Processing by worker</p>
           </div>
-          <p className="text-2xl font-extrabold text-indigo-400 font-mono">{counts.delayed}</p>
-          <p className="text-[10px] text-slate-500">Waiting for scheduled time</p>
-        </div>
 
-        {/* Completed */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Completed</span>
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
+          {/* Delayed */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm min-w-0">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider truncate">Delayed</span>
+              <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0" />
+            </div>
+            <p className="text-2xl font-extrabold text-indigo-400 font-mono">{counts.delayed}</p>
+            <p className="text-[10px] text-slate-500 truncate">Waiting for scheduled time</p>
           </div>
-          <p className="text-2xl font-extrabold text-emerald-400 font-mono">{counts.completed}</p>
-          <p className="text-[10px] text-slate-500">Delivered successfully</p>
-        </div>
 
-        {/* Failed */}
-        <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm col-span-2 sm:col-span-1">
-          <div className="flex items-center justify-between text-slate-400">
-            <span className="text-[11px] font-bold uppercase tracking-wider">Failed</span>
-            <span className="w-2 h-2 rounded-full bg-rose-400" />
+          {/* Completed */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm min-w-0">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider truncate">Completed</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0" />
+            </div>
+            <p className="text-2xl font-extrabold text-emerald-400 font-mono">{counts.completed}</p>
+            <p className="text-[10px] text-slate-500 truncate">Retained in Redis storage</p>
           </div>
-          <p className="text-2xl font-extrabold text-rose-400 font-mono">{counts.failed}</p>
-          <p className="text-[10px] text-slate-500">Exhausted max retries</p>
+
+          {/* Failed */}
+          <div className="rounded-xl border border-slate-800 bg-slate-900/50 p-4 space-y-1 shadow-sm col-span-2 sm:col-span-1 min-w-0">
+            <div className="flex items-center justify-between text-slate-400">
+              <span className="text-[11px] font-bold uppercase tracking-wider truncate">Failed</span>
+              <span className="w-2 h-2 rounded-full bg-rose-400 shrink-0" />
+            </div>
+            <p className="text-2xl font-extrabold text-rose-400 font-mono">{counts.failed}</p>
+            <p className="text-[10px] text-slate-500 truncate">Exhausted max retries</p>
+          </div>
         </div>
       </div>
 
@@ -185,8 +191,8 @@ export const QueueMonitoringTab: React.FC<QueueMonitoringTabProps> = () => {
         <div className="bg-slate-950/80 px-5 py-3 border-b border-slate-800/80 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-            <span className="text-xs font-semibold text-slate-200">Embedded Bull Board v9 UI</span>
-            <span className="text-[10px] text-slate-500 font-mono">(/admin/queues)</span>
+            <span className="text-xs font-semibold text-slate-200">Embedded Bull Board Dashboard</span>
+            <span className="text-[10px] text-slate-500 font-mono">(/admin/queues/)</span>
           </div>
 
           <div className="flex items-center space-x-3 text-[11px] text-slate-400">
@@ -197,18 +203,18 @@ export const QueueMonitoringTab: React.FC<QueueMonitoringTabProps> = () => {
               rel="noopener noreferrer"
               className="text-indigo-400 hover:text-indigo-300 font-semibold flex items-center space-x-1"
             >
-              <span>Expand</span>
+              <span>Open in New Tab</span>
               <span>↗</span>
             </a>
           </div>
         </div>
 
-        {/* Iframe */}
-        <div className="relative w-full h-[680px] bg-slate-950">
+        {/* Iframe with adjusted height and explicit trailing slash to load Bull Board dashboard */}
+        <div className="relative w-full h-[780px] lg:h-[840px] bg-slate-950 overflow-hidden">
           <iframe
-            src="/admin/queues"
+            src="/admin/queues/"
             title="BullMQ Queue Dashboard"
-            className="w-full h-full border-0"
+            className="w-full h-full border-0 block"
             sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
           />
         </div>
