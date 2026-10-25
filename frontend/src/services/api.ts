@@ -15,7 +15,7 @@ import type {
   EmailJobRecord,
 } from '../types/email';
 
-const API_BASE = '/api';
+const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 export class ApiError extends Error {
   public status: number;
@@ -30,7 +30,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  const url = endpoint.startsWith('/') ? endpoint : `${API_BASE}/${endpoint}`;
+  const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
   const headers = {
     'Content-Type': 'application/json',
     ...(options.headers || {}),
@@ -186,7 +186,7 @@ export const api = {
    * Initiates Google OAuth login by redirecting the browser.
    */
   loginWithGoogle(): void {
-    window.location.href = '/api/auth/google';
+    window.location.href = `${API_BASE}/api/auth/google`;
   },
 
   /**
@@ -202,7 +202,7 @@ export const api = {
    * Initiates Slack OAuth v2 flow by redirecting the browser.
    */
   connectSlack(): void {
-    window.location.href = '/api/slack/authorize';
+    window.location.href = `${API_BASE}/api/slack/authorize`;
   },
 
   /**
